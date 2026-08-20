@@ -12,11 +12,7 @@ async function dashboard(env, url) {
     SELECT substr(captured_at,1,13)||':00:00Z' t, ROUND(AVG(score),1) score, ROUND(AVG(breakout_score),1) breakout
     FROM topic_snapshots WHERE julianday(captured_at) >= julianday('now','-24 hours') GROUP BY t ORDER BY t
   `).all();
-  return json({
-    generatedAt: new Date().toISOString(),
-    topics: topics.map(t => ({ ...t, opportunities: safeJsonParse(t.ai_opportunities_json, []) || [] })),
-    sources, categories, timeline
-  });
+  return json({ generatedAt: new Date().toISOString(), topics: topics.map(t => ({ ...t, opportunities: safeJsonParse(t.ai_opportunities_json, []) || [] })), sources, categories, timeline });
 }
 
 async function topicDetail(env, id) {
@@ -42,11 +38,7 @@ async function externalIngest(env, request, sourceId) {
   const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || '';
   if (!env.INGEST_TOKEN || token !== env.INGEST_TOKEN) return json({ error: 'unauthorized' }, { status: 401 });
   const body = await request.json();
-  const items = (body.items || []).map(x => ({
-    ...x,
-    fingerprint: x.fingerprint || fingerprintTitle(x.title),
-    category: x.category || categoryFor(sourceId, x.title)
-  }));
+  const items = (body.items || []).map(x => ({ ...x, fingerprint: x.fingerprint || fingerprintTitle(x.title), category: x.category || categoryFor(sourceId, x.title) }));
   const count = await ingestExternal(env, sourceId, items);
   return json({ ok: true, count });
 }
@@ -60,7 +52,8 @@ export async function routeApi(env, request) {
   if (url.pathname.startsWith('/api/ingest/') && request.method === 'POST') return externalIngest(env, request, decodeURIComponent(url.pathname.slice('/api/ingest/'.length)));
   if (url.pathname === '/api/admin/collect' && request.method === 'POST') {
     const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || '';
-    if (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN) return json({ error: 'unauthorized' }, { status: 401 });
+    const openPreview = env.ALLOW_OPEN_COLLECT === '1';
+    if (!openPreview && (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN)) return json({ error: 'unauthorized' }, { status: 401 });
     return json(await collectAll(env));
   }
   return json({ error: 'not found' }, { status: 404 });
