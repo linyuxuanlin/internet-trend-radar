@@ -59,6 +59,11 @@ export default {
       return Response.json(await debugStatus(env));
     }
 
+    if (url.pathname === '/api/bootstrap' && request.method === 'POST') {
+      const result = await collectAll(env);
+      return Response.json({ ok: true, result, status: await debugStatus(env) });
+    }
+
     if (url.pathname === '/api/dashboard') {
       const init = await ensureInitialData(env);
       request.cfInitStatus = init;
