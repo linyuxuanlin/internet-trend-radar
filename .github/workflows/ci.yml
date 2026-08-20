@@ -40,6 +40,7 @@ jobs:
         timeout-minutes: 4
         run: |
           node scripts/build-static-dashboard.mjs
+          REQUIRE_SSPAI=1 node scripts/enrich-static-dashboard.mjs
           node - <<'NODE'
           const d = require('./public/data/dashboard.json');
           const healthy = (d.sources || []).filter(s => s.last_success_at);
@@ -48,6 +49,7 @@ jobs:
           if (d.ready !== true) throw new Error('ready must be true');
           if (!Array.isArray(d.topics) || d.topics.length === 0) throw new Error('no real topics');
           if (healthy.length === 0) throw new Error('no healthy real sources');
-          if (directCn.length === 0) throw new Error('no healthy direct Chinese source');
+          if (directCn.length < 2) throw new Error(`need >=2 healthy direct Chinese sources; got ${directCn.map(s => s.id).join(',')}`);
+          if (!directCn.some(s => s.id === 'sspai')) throw new Error('SSPAI direct RSS source is not healthy');
           console.log(`verified real topics=${d.topics.length}, healthySources=${healthy.length}, directCn=${directCn.map(s => s.id).join(',')}`);
           NODE
