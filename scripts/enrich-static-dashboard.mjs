@@ -8,22 +8,36 @@ function clamp(n, min = 0, max = 100) {
   return Math.max(min, Math.min(max, Number.isFinite(Number(n)) ? Number(n) : min));
 }
 
-async function fetchText(url, timeoutMs = 12000) {
+async function fetchResponse(url, { accept, timeoutMs = 12000 } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, {
       signal: controller.signal,
       headers: {
-        'user-agent': 'internet-trend-radar-static-enricher/1.0',
-        accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*;q=0.5'
+        'user-agent': 'Mozilla/5.0 trend-radar/1.1',
+        accept: accept || '*/*',
+        referer: url.includes('bilibili.com') ? 'https://www.bilibili.com/' : undefined
       }
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.text();
+    return res;
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function fetchText(url, timeoutMs = 12000) {
+  const res = await fetchResponse(url, {
+    timeoutMs,
+    accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*;q=0.5'
+  });
+  return await res.text();
+}
+
+async function fetchJson(url, timeoutMs = 12000) {
+  const res = await fetchResponse(url, { timeoutMs, accept: 'application/json, text/plain, */*' });
+  return await res.json();
 }
 
 function decodeXml(text = '') {
@@ -65,16 +79,16 @@ function parseFeed(xml) {
   })).filter(row => row.title);
 }
 
-function makeTopic(item, rank, total, capturedAt) {
-  const score = scoreItem(rank, total, 0, 0);
+function makeTopic({ sourceId, title, url = '', summary = '', rank, total, heat = 0, engagement = 0, capturedAt }) {
+  const score = scoreItem(rank, total, heat, engagement);
   const breakout = clamp(score * (rank <= 5 ? 0.92 : rank <= 10 ? 0.76 : 0.58));
-  const id = fingerprintTitle(item.title);
+  const id = fingerprintTitle(title);
   return {
     id,
     fingerprint: id,
-    canonical_title: item.title,
-    category: categoryFor('sspai', item.title),
-    language: /[\u3400-\u9fff]/.test(item.title) ? 'zh' : 'en',
+    canonical_title: title,
+    category: categoryFor(sourceId, title),
+    language: /[\u3400-\u9fff]/.test(title) ? 'zh' : 'en',
     first_seen_at: capturedAt,
     last_seen_at: capturedAt,
     current_score: Number(score.toFixed(1)),
@@ -82,14 +96,14 @@ function makeTopic(item, rank, total, capturedAt) {
     source_count: 1,
     mention_count: 1,
     status: topicStatus(score, breakout),
-    ai_summary: item.description ? item.description.slice(0, 180) : '少数派 RSS',
+    ai_summary: summary || null,
     ai_why_now: null,
     opportunities: [],
     sources: [{
-      source_id: 'sspai',
-      external_id: `sspai:${rank}:${id}`,
-      url: item.link,
-      title: item.title,
+      source_id: sourceId,
+      external_id: `${sourceId}:${rank}:${id}`,
+      url,
+      title,
       rank,
       captured_at: capturedAt
     }]
@@ -147,53 +161,120 @@ function refreshTimeline(dashboard) {
   }];
 }
 
-async function main() {
-  const dashboard = JSON.parse(await readFile(DASHBOARD, 'utf8'));
-  const capturedAt = dashboard.generatedAt || nowIso;
+function setSource(dashboard, source) {
+  dashboard.sources = [
+    ...(dashboard.sources || []).filter(existing => existing.id !== source.id),
+    source
+  ];
+}
 
+async function enrichSspai(dashboard, capturedAt) {
   try {
     const xml = await fetchText('https://sspai.com/feed');
     const rows = parseFeed(xml).slice(0, 25);
     if (!rows.length) throw new Error(`feed parsed zero entries; prefix=${JSON.stringify(xml.slice(0, 100))}`);
-    const topics = rows.map((row, i) => makeTopic(row, i + 1, rows.length, capturedAt));
-
+    const topics = rows.map((row, i) => makeTopic({
+      sourceId: 'sspai',
+      title: row.title,
+      url: row.link,
+      summary: row.description ? row.description.slice(0, 180) : '少数派 RSS',
+      rank: i + 1,
+      total: rows.length,
+      capturedAt
+    }));
     dashboard.topics = mergeTopics(dashboard.topics, topics);
-    dashboard.sources = [
-      ...(dashboard.sources || []).filter(source => source.id !== 'sspai'),
-      {
-        id: 'sspai',
-        name: '少数派',
-        region: 'cn',
-        kind: 'official-rss',
-        last_success_at: capturedAt,
-        last_error_at: null,
-        last_error: null,
-        last_item_count: topics.length
-      }
-    ];
-    dashboard.categories = categorySummary(dashboard.topics);
-    refreshTimeline(dashboard);
-    await writeFile(DASHBOARD, JSON.stringify(dashboard, null, 2) + '\n', 'utf8');
+    setSource(dashboard, {
+      id: 'sspai',
+      name: '少数派',
+      region: 'cn',
+      kind: 'official-rss',
+      last_success_at: capturedAt,
+      last_error_at: null,
+      last_error: null,
+      last_item_count: topics.length
+    });
     console.log(`OK sspai: ${topics.length}; dashboard topics=${dashboard.topics.length}`);
   } catch (error) {
     const message = String(error?.message || error).slice(0, 300);
-    dashboard.sources = [
-      ...(dashboard.sources || []).filter(source => source.id !== 'sspai'),
-      {
-        id: 'sspai',
-        name: '少数派',
-        region: 'cn',
-        kind: 'official-rss',
-        last_success_at: null,
-        last_error_at: nowIso,
-        last_error: message,
-        last_item_count: 0
-      }
-    ];
-    await writeFile(DASHBOARD, JSON.stringify(dashboard, null, 2) + '\n', 'utf8');
+    setSource(dashboard, {
+      id: 'sspai',
+      name: '少数派',
+      region: 'cn',
+      kind: 'official-rss',
+      last_success_at: null,
+      last_error_at: nowIso,
+      last_error: message,
+      last_item_count: 0
+    });
     console.warn(`FAIL sspai: ${message}`);
     if (process.env.REQUIRE_SSPAI === '1') throw error;
   }
+}
+
+async function enrichBilibili(dashboard, capturedAt) {
+  try {
+    const body = await fetchJson('https://api.bilibili.com/x/web-interface/popular?ps=20&pn=1');
+    if (Number(body?.code) !== 0) throw new Error(`API code ${body?.code}: ${body?.message || 'unknown error'}`);
+    const rows = Array.isArray(body?.data?.list) ? body.data.list.slice(0, 20) : [];
+    if (!rows.length) throw new Error('popular API returned no videos');
+    const topics = rows.map((item, i) => {
+      const stat = item?.stat || {};
+      const heat = Number(stat.view || 0);
+      const engagement = ['like', 'reply', 'coin', 'favorite', 'share', 'danmaku']
+        .reduce((sum, key) => sum + Number(stat[key] || 0), 0);
+      const owner = String(item?.owner?.name || '').trim();
+      const tname = String(item?.tname || '').trim();
+      return makeTopic({
+        sourceId: 'bilibili',
+        title: String(item?.title || '').trim(),
+        url: item?.bvid ? `https://www.bilibili.com/video/${item.bvid}` : String(item?.short_link_v2 || ''),
+        summary: [tname && `B站 · ${tname}`, owner && `UP ${owner}`].filter(Boolean).join(' · '),
+        rank: i + 1,
+        total: rows.length,
+        heat,
+        engagement,
+        capturedAt
+      });
+    }).filter(topic => topic.canonical_title);
+    if (!topics.length) throw new Error('popular API returned no usable titles');
+    dashboard.topics = mergeTopics(dashboard.topics, topics);
+    setSource(dashboard, {
+      id: 'bilibili',
+      name: '哔哩哔哩',
+      region: 'cn',
+      kind: 'official-api',
+      last_success_at: capturedAt,
+      last_error_at: null,
+      last_error: null,
+      last_item_count: topics.length
+    });
+    console.log(`OK bilibili: ${topics.length}; dashboard topics=${dashboard.topics.length}`);
+  } catch (error) {
+    const message = String(error?.message || error).slice(0, 300);
+    setSource(dashboard, {
+      id: 'bilibili',
+      name: '哔哩哔哩',
+      region: 'cn',
+      kind: 'official-api',
+      last_success_at: null,
+      last_error_at: nowIso,
+      last_error: message,
+      last_item_count: 0
+    });
+    console.warn(`FAIL bilibili: ${message}`);
+    if (process.env.REQUIRE_BILIBILI === '1') throw error;
+  }
+}
+
+async function main() {
+  const dashboard = JSON.parse(await readFile(DASHBOARD, 'utf8'));
+  const capturedAt = dashboard.generatedAt || nowIso;
+
+  await enrichSspai(dashboard, capturedAt);
+  await enrichBilibili(dashboard, capturedAt);
+  dashboard.categories = categorySummary(dashboard.topics || []);
+  refreshTimeline(dashboard);
+  await writeFile(DASHBOARD, JSON.stringify(dashboard, null, 2) + '\n', 'utf8');
 }
 
 await main();
