@@ -1,0 +1,54 @@
+name: Verify Coffee Lab public access
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'public/coffee-mvps/**'
+      - 'public/_redirects'
+      - '.github/workflows/verify-coffee-public.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Wait for Cloudflare Workers Build and verify
+        id: probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://internet-trend-radar.linyuxuanlin.workers.dev/coffee-mvps/index.html'
+          ok=0
+          for i in $(seq 1 30); do
+            code=$(curl -L -sS -o /tmp/coffee.html -w '%{http_code}' --max-time 20 "$URL" || true)
+            if [ "$code" = '200' ] && grep -q 'Coffee Lab' /tmp/coffee.html; then
+              ok=1
+              break
+            fi
+            echo "attempt $i: HTTP $code"
+            sleep 10
+          done
+          if [ "$ok" != '1' ]; then
+            echo 'Coffee Lab public endpoint did not become healthy in time.' >&2
+            exit 1
+          fi
+          bytes=$(wc -c < /tmp/coffee.html | tr -d ' ')
+          printf '{\n  "verified": true,\n  "url": "%s",\n  "http_status": 200,\n  "bytes": %s,\n  "verified_at_utc": "%s",\n  "source_commit": "%s"\n}\n' "$URL" "$bytes" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_SHA" > public/coffee-mvps/verification.json
+
+      - name: Record successful public verification
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add public/coffee-mvps/verification.json
+          git diff --cached --quiet && exit 0
+          git commit -m 'chore: record Coffee Lab public verification [verify]'
+          git push
