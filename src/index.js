@@ -6,17 +6,10 @@ async function ensureInitialData(env) {
   if (!env.DB) return { ok: false, reason: 'missing-db' };
   try {
     const row = await env.DB.prepare('SELECT COUNT(*) as count FROM topics').first();
-    if (row && Number(row.count || 0) > 0) {
-      return { ok: true, existing: Number(row.count) };
-    }
-
+    if (row && Number(row.count || 0) > 0) return { ok: true, existing: Number(row.count) };
     const result = await collectAll(env);
     const after = await env.DB.prepare('SELECT COUNT(*) as count FROM topics').first();
-    return {
-      ok: true,
-      collected: result,
-      topics: Number(after?.count || 0)
-    };
+    return { ok: true, collected: result, topics: Number(after?.count || 0) };
   } catch (err) {
     console.error('initial collection failed', err);
     return { ok: false, error: String(err?.message || err) };
@@ -32,9 +25,7 @@ async function debugStatus(env) {
     error: null,
     generatedAt: new Date().toISOString()
   };
-
   if (!env.DB) return status;
-
   try {
     const [raw, topics, sources] = await Promise.all([
       env.DB.prepare('SELECT COUNT(*) as count FROM raw_items').first(),
@@ -47,7 +38,6 @@ async function debugStatus(env) {
   } catch (err) {
     status.error = String(err?.message || err);
   }
-
   return status;
 }
 
@@ -60,13 +50,16 @@ export default {
     }
 
     if (url.pathname === '/api/bootstrap' && request.method === 'POST') {
-      const result = await collectAll(env);
-      return Response.json({ ok: true, result, status: await debugStatus(env) });
+      try {
+        const result = await collectAll(env);
+        return Response.json({ ok: true, result, status: await debugStatus(env) });
+      } catch (err) {
+        return Response.json({ ok: false, error: String(err?.message || err), status: await debugStatus(env) }, { status: 500 });
+      }
     }
 
     if (url.pathname === '/api/dashboard') {
-      const init = await ensureInitialData(env);
-      request.cfInitStatus = init;
+      await ensureInitialData(env);
     }
 
     if (url.pathname.startsWith('/api/')) return routeApi(env, request);
