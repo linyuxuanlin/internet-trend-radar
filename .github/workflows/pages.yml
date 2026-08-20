@@ -34,6 +34,7 @@ jobs:
         run: |
           node scripts/build-static-dashboard.mjs
           REQUIRE_SSPAI=1 REQUIRE_BILIBILI=1 node scripts/enrich-static-dashboard.mjs
+          REQUIRE_36KR=1 node scripts/enrich-36kr.mjs
 
       - name: Verify production real-data gate
         run: node scripts/validate-real-dashboard.mjs
