@@ -39,6 +39,11 @@ jobs:
         run: |
           node -e "const d=require('./public/data/dashboard.json'); if(d.preview!==false||d.ready!==true||!Array.isArray(d.topics)||d.topics.length===0) process.exit(1); console.log('real topics:',d.topics.length,'healthy sources:',d.sources.filter(s=>s.last_success_at).length)"
 
+      - name: Add Coffee Lab mobile MVPs
+        run: |
+          mkdir -p public/coffee-mvps
+          cp coffee-mvps/index.html public/coffee-mvps/index.html
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
