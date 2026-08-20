@@ -7,11 +7,11 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "db:create": "wrangler d1 create trend-radar",
-    "db:migrate:local": "wrangler d1 migrations apply trend-radar --local",
-    "db:migrate:remote": "wrangler d1 migrations apply trend-radar --remote",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
     "tail": "wrangler tail"
   },
   "devDependencies": {
-    "wrangler": "^4.0.0"
+    "wrangler": "^4.102.0"
   }
 }
