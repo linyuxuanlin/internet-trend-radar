@@ -42,10 +42,12 @@ jobs:
           node scripts/build-static-dashboard.mjs
           node - <<'NODE'
           const d = require('./public/data/dashboard.json');
-          const healthy = (d.sources || []).filter(s => s.last_success_at).length;
+          const healthy = (d.sources || []).filter(s => s.last_success_at);
+          const directCn = healthy.filter(s => s.region === 'cn' && ['official-api', 'official-rss'].includes(s.kind));
           if (d.preview !== false) throw new Error('preview must be false');
           if (d.ready !== true) throw new Error('ready must be true');
           if (!Array.isArray(d.topics) || d.topics.length === 0) throw new Error('no real topics');
-          if (healthy === 0) throw new Error('no healthy real sources');
-          console.log(`verified real topics=${d.topics.length}, healthySources=${healthy}`);
+          if (healthy.length === 0) throw new Error('no healthy real sources');
+          if (directCn.length === 0) throw new Error('no healthy direct Chinese source');
+          console.log(`verified real topics=${d.topics.length}, healthySources=${healthy.length}, directCn=${directCn.map(s => s.id).join(',')}`);
           NODE
