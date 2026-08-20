@@ -27,17 +27,19 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Build real trend snapshot
-        run: node scripts/build-static-dashboard.mjs
+        run: |
+          node scripts/build-static-dashboard.mjs
+          node scripts/enrich-static-dashboard.mjs
 
       - name: Patch Pages frontend fallback
         run: node scripts/patch-pages-index.mjs
 
       - name: Verify snapshot is real
         run: |
-          node -e "const d=require('./public/data/dashboard.json'); if(d.preview!==false||d.ready!==true||!Array.isArray(d.topics)||d.topics.length===0) process.exit(1); console.log('real topics:',d.topics.length,'healthy sources:',d.sources.filter(s=>s.last_success_at).length)"
+          node -e "const d=require('./public/data/dashboard.json'); if(d.preview!==false||d.ready!==true||!Array.isArray(d.topics)||d.topics.length===0) process.exit(1); console.log('real topics:',d.topics.length,'healthy sources:',d.sources.filter(s=>s.last_success_at).length,'direct cn:',d.sources.filter(s=>s.region==='cn'&&s.last_success_at&&['official-api','official-rss'].includes(s.kind)).map(s=>s.id).join(','))"
 
       - name: Add Coffee Lab mobile MVPs
         run: |
