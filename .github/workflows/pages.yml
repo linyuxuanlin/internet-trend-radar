@@ -36,9 +36,10 @@ jobs:
           REQUIRE_SSPAI=1 REQUIRE_BILIBILI=1 node scripts/enrich-static-dashboard.mjs
           REQUIRE_36KR=1 node scripts/enrich-36kr.mjs
           REQUIRE_JUEJIN=1 node scripts/enrich-juejin.mjs
+          REQUIRE_ZHIHU=1 node scripts/enrich-zhihu.mjs
 
       - name: Verify production real-data gate
-        run: MIN_HEALTHY_SOURCES=7 MIN_DIRECT_CN_SOURCES=5 REQUIRED_DIRECT_CN=v2ex,sspai,bilibili,36kr,juejin node scripts/validate-real-dashboard.mjs
+        run: MIN_HEALTHY_SOURCES=8 MIN_DIRECT_CN_SOURCES=6 REQUIRED_DIRECT_CN=v2ex,sspai,bilibili,36kr,juejin,zhihu node scripts/validate-real-dashboard.mjs
 
       - name: Patch Pages frontend fallback
         run: node scripts/patch-pages-index.mjs
