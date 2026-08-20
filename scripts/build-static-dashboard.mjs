@@ -8,15 +8,14 @@ const nowIso = NOW.toISOString();
 
 const DAILYHOT_SOURCES = [
   ['weibo', '微博'], ['zhihu', '知乎'], ['bilibili', '哔哩哔哩'], ['baidu', '百度'],
-  ['douyin', '抖音'], ['toutiao', '今日头条'], ['36kr', '36氪'], ['juejin', '稀土掘金'],
-  ['hupu', '虎扑'], ['v2ex', 'V2EX']
+  ['douyin', '抖音'], ['toutiao', '今日头条'], ['juejin', '稀土掘金'], ['hupu', '虎扑']
 ];
 
 function clamp(n, min = 0, max = 100) {
   return Math.max(min, Math.min(max, Number.isFinite(Number(n)) ? Number(n) : min));
 }
 
-async function fetchJson(url, init = {}, timeoutMs = 12000) {
+async function fetchResponse(url, init = {}, timeoutMs = 12000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -24,16 +23,31 @@ async function fetchJson(url, init = {}, timeoutMs = 12000) {
       ...init,
       signal: controller.signal,
       headers: {
-        'user-agent': 'internet-trend-radar-static-builder/1.0',
-        accept: 'application/json',
+        'user-agent': 'internet-trend-radar-static-builder/1.1',
         ...(init.headers || {})
       }
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
+    return res;
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function fetchJson(url, init = {}, timeoutMs = 12000) {
+  const res = await fetchResponse(url, {
+    ...init,
+    headers: { accept: 'application/json', ...(init.headers || {}) }
+  }, timeoutMs);
+  return await res.json();
+}
+
+async function fetchText(url, init = {}, timeoutMs = 12000) {
+  const res = await fetchResponse(url, {
+    ...init,
+    headers: { accept: 'application/rss+xml, application/xml, text/xml, text/plain;q=0.9, */*;q=0.5', ...(init.headers || {}) }
+  }, timeoutMs);
+  return await res.text();
 }
 
 function pickHeat(item) {
@@ -74,6 +88,16 @@ function makeTopic({ sourceId, title, url = '', rank = 1, total = 50, heat = 0, 
   };
 }
 
+function healthySource(id, name, region, kind, count) {
+  return {
+    id, name, region, kind,
+    last_success_at: nowIso,
+    last_error_at: null,
+    last_error: null,
+    last_item_count: count
+  };
+}
+
 async function collectDailyHot(sourceId, sourceName) {
   const body = await fetchJson(`${DAILYHOT_BASE}/${encodeURIComponent(sourceId)}`);
   const list = Array.isArray(body?.data) ? body.data : [];
@@ -92,7 +116,103 @@ async function collectDailyHot(sourceId, sourceName) {
     });
   }).filter(Boolean);
   if (!topics.length) throw new Error('no usable titles');
-  return { topics, source: { id: sourceId, name: sourceName, region: 'cn', kind: 'aggregator', last_success_at: nowIso, last_error_at: null, last_error: null, last_item_count: topics.length } };
+  return { topics, source: healthySource(sourceId, sourceName, 'cn', 'aggregator', topics.length) };
+}
+
+async function collectV2EX() {
+  const list = await fetchJson('https://www.v2ex.com/api/topics/hot.json');
+  if (!Array.isArray(list) || !list.length) throw new Error('empty data');
+  const topics = list.slice(0, 20).map((item, i) => {
+    const title = String(item?.title || '').trim();
+    if (!title) return null;
+    const replies = Number(item?.replies || 0);
+    const node = String(item?.node?.title || item?.node?.name || '').trim();
+    const member = String(item?.member?.username || '').trim();
+    const summary = [node && `V2EX · ${node}`, member && `@${member}`, `${replies} replies`].filter(Boolean).join(' · ');
+    return makeTopic({
+      sourceId: 'v2ex',
+      title,
+      url: item?.url || (item?.id ? `https://www.v2ex.com/t/${item.id}` : ''),
+      rank: i + 1,
+      total: list.length,
+      heat: replies,
+      engagement: replies,
+      summary
+    });
+  }).filter(Boolean);
+  if (!topics.length) throw new Error('no usable titles');
+  return { topics, source: healthySource('v2ex', 'V2EX', 'cn', 'official-api', topics.length) };
+}
+
+function decodeXml(text = '') {
+  return String(text)
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+function stripHtml(text = '') {
+  return decodeXml(text).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function tagValue(block, tag) {
+  const match = block.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`, 'i'));
+  return match ? decodeXml(match[1]).trim() : '';
+}
+
+function parseRssItems(xml) {
+  const blocks = String(xml).match(/<item(?:\s[^>]*)?>[\s\S]*?<\/item>/gi) || [];
+  return blocks.map(block => ({
+    title: stripHtml(tagValue(block, 'title')),
+    link: stripHtml(tagValue(block, 'link')),
+    description: stripHtml(tagValue(block, 'description')),
+    pubDate: stripHtml(tagValue(block, 'pubDate'))
+  })).filter(x => x.title);
+}
+
+async function collect36Kr() {
+  const feeds = [
+    ['https://36kr.com/feed', '综合资讯'],
+    ['https://36kr.com/feed-newsflash', '最新快讯']
+  ];
+  const collected = [];
+  const errors = [];
+
+  for (const [url, label] of feeds) {
+    try {
+      const xml = await fetchText(url);
+      const rows = parseRssItems(xml);
+      if (!rows.length) throw new Error('RSS contains no items');
+      for (const row of rows.slice(0, 20)) collected.push({ ...row, label });
+    } catch (error) {
+      errors.push(`${label}: ${String(error?.message || error)}`);
+    }
+  }
+
+  const seen = new Set();
+  const list = collected.filter(row => {
+    const key = fingerprintTitle(row.title);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 30);
+
+  if (!list.length) throw new Error(errors.join('; ') || 'empty data');
+  const topics = list.map((item, i) => makeTopic({
+    sourceId: '36kr',
+    title: item.title,
+    url: item.link,
+    rank: i + 1,
+    total: list.length,
+    heat: 0,
+    engagement: 0,
+    summary: `36氪 · ${item.label}${item.pubDate ? ` · ${item.pubDate}` : ''}`
+  }));
+  return { topics, source: healthySource('36kr', '36氪', 'cn', 'official-rss', topics.length) };
 }
 
 async function collectHackerNews() {
@@ -110,7 +230,7 @@ async function collectHackerNews() {
     summary: item.by ? `Hacker News · ${item.by}` : 'Hacker News'
   })).filter(x => x.canonical_title);
   if (!topics.length) throw new Error('empty data');
-  return { topics, source: { id: 'hackernews', name: 'Hacker News', region: 'global', kind: 'official-api', last_success_at: nowIso, last_error_at: null, last_error: null, last_item_count: topics.length } };
+  return { topics, source: healthySource('hackernews', 'Hacker News', 'global', 'official-api', topics.length) };
 }
 
 async function collectGitHub() {
@@ -131,7 +251,7 @@ async function collectGitHub() {
     summary: String(repo.description || '').slice(0, 180)
   }));
   if (!topics.length) throw new Error('empty data');
-  return { topics, source: { id: 'github', name: 'GitHub', region: 'global', kind: 'official-api', last_success_at: nowIso, last_error_at: null, last_error: null, last_item_count: topics.length } };
+  return { topics, source: healthySource('github', 'GitHub', 'global', 'official-api', topics.length) };
 }
 
 function mergeExactDuplicates(rows) {
@@ -160,15 +280,21 @@ function categorySummary(topics) {
     row.total += Number(t.current_score || 0);
     map.set(t.category, row);
   }
-  return [...map.values()].map(x => ({ category: x.category, count: x.count, avg_score: Number((x.total / x.count).toFixed(1)) })).sort((a, b) => b.count - a.count);
+  return [...map.values()]
+    .map(x => ({ category: x.category, count: x.count, avg_score: Number((x.total / x.count).toFixed(1)) }))
+    .sort((a, b) => b.count - a.count);
 }
 
 async function main() {
   const topics = [];
   const sources = [];
-  const jobs = DAILYHOT_SOURCES.map(([id, name]) => ({ id, name, run: () => collectDailyHot(id, name) }));
-  jobs.push({ id: 'hackernews', name: 'Hacker News', run: collectHackerNews });
-  jobs.push({ id: 'github', name: 'GitHub', run: collectGitHub });
+  const jobs = DAILYHOT_SOURCES.map(([id, name]) => ({
+    id, name, region: 'cn', kind: 'aggregator', run: () => collectDailyHot(id, name)
+  }));
+  jobs.push({ id: 'v2ex', name: 'V2EX', region: 'cn', kind: 'official-api', run: collectV2EX });
+  jobs.push({ id: '36kr', name: '36氪', region: 'cn', kind: 'official-rss', run: collect36Kr });
+  jobs.push({ id: 'hackernews', name: 'Hacker News', region: 'global', kind: 'official-api', run: collectHackerNews });
+  jobs.push({ id: 'github', name: 'GitHub', region: 'global', kind: 'official-api', run: collectGitHub });
 
   for (const job of jobs) {
     try {
@@ -182,8 +308,8 @@ async function main() {
       sources.push({
         id: job.id,
         name: job.name,
-        region: DAILYHOT_SOURCES.some(([id]) => id === job.id) ? 'cn' : 'global',
-        kind: DAILYHOT_SOURCES.some(([id]) => id === job.id) ? 'aggregator' : 'official-api',
+        region: job.region,
+        kind: job.kind,
         last_success_at: null,
         last_error_at: nowIso,
         last_error: message,
