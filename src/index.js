@@ -3,23 +3,35 @@ import { collectAll } from './collector.js';
 import { sendDailyDigest } from './email.js';
 
 async function ensureInitialData(env) {
-  if (!env.DB) return;
+  if (!env.DB) return { ok: false, reason: 'missing-db' };
   try {
     const row = await env.DB.prepare('SELECT COUNT(*) as count FROM topics').first();
-    if (!row || Number(row.count || 0) === 0) {
-      await collectAll(env);
+    if (row && Number(row.count || 0) > 0) {
+      return { ok: true, existing: Number(row.count) };
     }
+
+    const result = await collectAll(env);
+    const after = await env.DB.prepare('SELECT COUNT(*) as count FROM topics').first();
+    return {
+      ok: true,
+      collected: result,
+      topics: Number(after?.count || 0)
+    };
   } catch (err) {
     console.error('initial collection failed', err);
+    return { ok: false, error: String(err?.message || err) };
   }
 }
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
     if (url.pathname === '/api/dashboard') {
-      await ensureInitialData(env);
+      const init = await ensureInitialData(env);
+      request.cfInitStatus = init;
     }
+
     if (url.pathname.startsWith('/api/')) return routeApi(env, request);
     return env.ASSETS.fetch(request);
   },
