@@ -14,13 +14,18 @@ async function markSource(env, id, ok, count = 0, error = '') {
   }
 }
 
+function chunks(items, size) {
+  const out = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
 async function persist(env, items) {
-  for (const item of items) {
-    await env.DB.prepare(`
-      INSERT INTO raw_items(source_id,external_id,title,url,author,category,language,rank,heat,engagement,published_at,captured_at,fingerprint,raw_json)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-    `).bind(item.sourceId,item.externalId,item.title,item.url || '',item.author || '',item.category || '综合',item.language || 'zh',item.rank || null,item.heat || 0,item.engagement || 0,item.publishedAt,item.capturedAt,item.fingerprint,JSON.stringify(item.raw || {})).run();
-  }
+  const statements = items.map(item => env.DB.prepare(`
+    INSERT INTO raw_items(source_id,external_id,title,url,author,category,language,rank,heat,engagement,published_at,captured_at,fingerprint,raw_json)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  `).bind(item.sourceId,item.externalId,item.title,item.url || '',item.author || '',item.category || '综合',item.language || 'zh',item.rank || null,item.heat || 0,item.engagement || 0,item.publishedAt,item.capturedAt,item.fingerprint,JSON.stringify(item.raw || {})));
+  for (const group of chunks(statements, 80)) await env.DB.batch(group);
 }
 
 export async function collectAll(env) {
@@ -58,6 +63,8 @@ export async function collectAll(env) {
 
 export async function ingestExternal(env, sourceId, items) {
   if (!Array.isArray(items)) throw new Error('items must be an array');
+  await env.DB.prepare(`INSERT OR IGNORE INTO sources(id,name,region,kind) VALUES(?,?,?,?)`)
+    .bind(sourceId, sourceId, 'unknown', 'external-bridge').run();
   const normalized = items.slice(0, 200).map((x, i) => ({
     sourceId,
     externalId: String(x.externalId || x.id || x.url || `${i}:${x.title}`),
