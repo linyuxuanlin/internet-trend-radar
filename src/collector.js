@@ -28,10 +28,19 @@ async function persist(env, items) {
   for (const group of chunks(statements, 80)) await env.DB.batch(group);
 }
 
+function collectionFailure(summary) {
+  const failed = summary.filter(x => !x.ok);
+  const detail = failed.slice(0, 6).map(x => `${x.sourceId}: ${x.error || 'no items'}`).join('; ');
+  return new Error(`collection produced no real items${detail ? ` (${detail})` : ''}`);
+}
+
 export async function collectAll(env) {
+  if (!env.DB) throw new Error('missing DB binding');
+
   const sourceIds = String(env.COLLECTOR_SOURCES || 'weibo,zhihu,bilibili,baidu,douyin,toutiao,36kr,juejin,hupu,v2ex')
     .split(',').map(x => x.trim()).filter(Boolean);
   const summary = [];
+
   for (const sourceId of sourceIds) {
     try {
       const items = await collectDailyHot(env, sourceId);
@@ -56,9 +65,25 @@ export async function collectAll(env) {
     }
   }
 
+  const realItemCount = summary.reduce((sum, x) => sum + (x.ok ? Number(x.count || 0) : 0), 0);
+  if (realItemCount <= 0) throw collectionFailure(summary);
+
   const topics = await rebuildTopics(env.DB, 24);
+  if (topics <= 0) {
+    throw new Error(`collection stored ${realItemCount} real items but produced 0 topics`);
+  }
+
   const ai = await enrichTopTopics(env);
-  return { summary, topics, ai, at: new Date().toISOString() };
+  return {
+    ok: true,
+    realItemCount,
+    healthySources: summary.filter(x => x.ok && Number(x.count || 0) > 0).length,
+    failedSources: summary.filter(x => !x.ok).length,
+    summary,
+    topics,
+    ai,
+    at: new Date().toISOString()
+  };
 }
 
 export async function ingestExternal(env, sourceId, items) {
