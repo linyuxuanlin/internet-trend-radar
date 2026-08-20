@@ -23,21 +23,40 @@ function previewData(category = '') {
   ]};
 }
 
+function notReady(error, extra = {}) {
+  return {
+    generatedAt: new Date().toISOString(),
+    ready: false,
+    preview: false,
+    error,
+    topics: [],
+    categories: [],
+    timeline: [],
+    sources: [],
+    ...extra
+  };
+}
+
 async function dashboard(env, url) {
   const category = url.searchParams.get('category') || '';
+  if (!env.DB) return json(notReady('missing DB binding'), { status: 503 });
+
   try {
-    if (!env.DB) return json(previewData(category));
     const where = category && category !== '全部' ? 'WHERE category=?' : '';
     const stmt = env.DB.prepare(`SELECT * FROM topics ${where} ORDER BY current_score DESC, breakout_score DESC LIMIT 80`);
     const { results: topics = [] } = category && category !== '全部' ? await stmt.bind(category).all() : await stmt.all();
-    if (!topics.length) return json(previewData(category));
     const { results: sources = [] } = await env.DB.prepare(`SELECT id,name,region,kind,last_success_at,last_error_at,last_error,last_item_count FROM sources ORDER BY region DESC,name`).all();
+
+    if (!topics.length) {
+      return json(notReady('no real topics available yet', { sources }), { status: 503 });
+    }
+
     const { results: categories = [] } = await env.DB.prepare(`SELECT category,COUNT(*) count,ROUND(AVG(current_score),1) avg_score FROM topics GROUP BY category ORDER BY count DESC`).all();
     const { results: timeline = [] } = await env.DB.prepare(`SELECT substr(captured_at,1,13)||':00:00Z' t, ROUND(AVG(score),1) score, ROUND(AVG(breakout_score),1) breakout FROM topic_snapshots WHERE julianday(captured_at) >= julianday('now','-24 hours') GROUP BY t ORDER BY t`).all();
-    return json({ generatedAt: new Date().toISOString(), preview:false, topics: topics.map(t => ({ ...t, opportunities: safeJsonParse(t.ai_opportunities_json, []) || [] })), sources, categories, timeline });
+    return json({ generatedAt: new Date().toISOString(), ready:true, preview:false, topics: topics.map(t => ({ ...t, opportunities: safeJsonParse(t.ai_opportunities_json, []) || [] })), sources, categories, timeline });
   } catch (error) {
-    console.error('dashboard fallback to preview', error);
-    return json(previewData(category));
+    console.error('dashboard real-data query failed', error);
+    return json(notReady(String(error?.message || error)), { status: 503 });
   }
 }
 
@@ -84,7 +103,11 @@ export async function routeApi(env, request) {
     const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || '';
     const openPreview = env.ALLOW_OPEN_COLLECT === '1';
     if (!openPreview && (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN)) return json({ error: 'unauthorized' }, { status: 401 });
-    return json(await collectAll(env));
+    try {
+      return json(await collectAll(env));
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message || error) }, { status: 503 });
+    }
   }
   return json({ error: 'not found' }, { status: 404 });
 }
