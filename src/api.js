@@ -1,21 +1,51 @@
 import { json, fingerprintTitle, safeJsonParse, categoryFor } from './utils.js';
 import { collectAll, ingestExternal } from './collector.js';
 
+function previewData(category = '') {
+  const now = new Date();
+  const seed = [
+    ['preview-ai-agents','AI Agent 工具进入新一轮产品化','AI',88,94,'多个开发者社区同时出现 Agent 工作流、浏览器自动化和本地执行工具讨论。','把重复工作流做成小而专的 Agent 工具，先验证单一高频场景。'],
+    ['preview-local-ai','本地 AI 与隐私优先应用升温','AI',81,86,'端侧模型、私有知识库和离线推理持续获得关注。','面向个人资料、企业文档做隐私优先的本地 AI 助手。'],
+    ['preview-creator-tools','AI 内容生产从生成转向工作流','科技',76,82,'用户关注点从一次性生成转向素材管理、审核和发布闭环。','围绕创作者真实发布流程做可复用模板和自动化。'],
+    ['preview-consumption','高性价比消费决策工具受关注','消费',72,78,'价格历史、口碑聚合和避坑信息在多个平台持续有需求。','把分散评价整理成可解释的购买决策雷达。'],
+    ['preview-open-source','开源 AI 项目迭代速度继续提高','科技',84,89,'GitHub 等开发者平台的新工具和模型封装保持高频更新。','追踪增长速度而非绝对 Star 数，寻找刚出现的开发机会。'],
+    ['preview-sports','大众运动的轻量训练服务增长','体育',64,71,'网球、跑步等运动内容更强调入门体验与持续训练。','设计低压力、可量化的练习记录与教练匹配工具。']
+  ];
+  let topics = seed.map((x,i)=>({id:x[0],canonical_title:x[1],category:x[2],current_score:x[3],breakout_score:x[4],source_count:2+i%3,status:x[4]>=85?'rising':'watch',ai_summary:x[5],opportunities:[{idea:x[6]}],preview:true}));
+  if (category && category !== '全部') topics = topics.filter(t=>t.category===category);
+  const counts = {};
+  for (const t of topics) counts[t.category]=(counts[t.category]||0)+1;
+  const timeline = Array.from({length:12},(_,i)=>({t:new Date(now.getTime()-(11-i)*2*3600e3).toISOString(),score:55+i*2.3+(i%3)*3,breakout:43+i*3.2+(i%4)*2}));
+  return {generatedAt:now.toISOString(),preview:true,topics,categories:Object.entries(counts).map(([category,count])=>({category,count,avg_score:Math.round(topics.filter(t=>t.category===category).reduce((a,b)=>a+b.current_score,0)/count)})),timeline,sources:[
+    {id:'preview-cn',name:'中文互联网聚合',region:'CN',kind:'preview',last_success_at:now.toISOString(),last_error:null,last_item_count:36},
+    {id:'preview-dev',name:'开发者社区',region:'GLOBAL',kind:'preview',last_success_at:now.toISOString(),last_error:null,last_item_count:24},
+    {id:'preview-news',name:'新闻与科技媒体',region:'GLOBAL',kind:'preview',last_success_at:now.toISOString(),last_error:null,last_item_count:18}
+  ]};
+}
+
 async function dashboard(env, url) {
   const category = url.searchParams.get('category') || '';
-  const where = category && category !== '全部' ? 'WHERE category=?' : '';
-  const stmt = env.DB.prepare(`SELECT * FROM topics ${where} ORDER BY current_score DESC, breakout_score DESC LIMIT 80`);
-  const { results: topics = [] } = category && category !== '全部' ? await stmt.bind(category).all() : await stmt.all();
-  const { results: sources = [] } = await env.DB.prepare(`SELECT id,name,region,kind,last_success_at,last_error_at,last_error,last_item_count FROM sources ORDER BY region DESC,name`).all();
-  const { results: categories = [] } = await env.DB.prepare(`SELECT category,COUNT(*) count,ROUND(AVG(current_score),1) avg_score FROM topics GROUP BY category ORDER BY count DESC`).all();
-  const { results: timeline = [] } = await env.DB.prepare(`
-    SELECT substr(captured_at,1,13)||':00:00Z' t, ROUND(AVG(score),1) score, ROUND(AVG(breakout_score),1) breakout
-    FROM topic_snapshots WHERE julianday(captured_at) >= julianday('now','-24 hours') GROUP BY t ORDER BY t
-  `).all();
-  return json({ generatedAt: new Date().toISOString(), topics: topics.map(t => ({ ...t, opportunities: safeJsonParse(t.ai_opportunities_json, []) || [] })), sources, categories, timeline });
+  try {
+    if (!env.DB) return json(previewData(category));
+    const where = category && category !== '全部' ? 'WHERE category=?' : '';
+    const stmt = env.DB.prepare(`SELECT * FROM topics ${where} ORDER BY current_score DESC, breakout_score DESC LIMIT 80`);
+    const { results: topics = [] } = category && category !== '全部' ? await stmt.bind(category).all() : await stmt.all();
+    if (!topics.length) return json(previewData(category));
+    const { results: sources = [] } = await env.DB.prepare(`SELECT id,name,region,kind,last_success_at,last_error_at,last_error,last_item_count FROM sources ORDER BY region DESC,name`).all();
+    const { results: categories = [] } = await env.DB.prepare(`SELECT category,COUNT(*) count,ROUND(AVG(current_score),1) avg_score FROM topics GROUP BY category ORDER BY count DESC`).all();
+    const { results: timeline = [] } = await env.DB.prepare(`SELECT substr(captured_at,1,13)||':00:00Z' t, ROUND(AVG(score),1) score, ROUND(AVG(breakout_score),1) breakout FROM topic_snapshots WHERE julianday(captured_at) >= julianday('now','-24 hours') GROUP BY t ORDER BY t`).all();
+    return json({ generatedAt: new Date().toISOString(), preview:false, topics: topics.map(t => ({ ...t, opportunities: safeJsonParse(t.ai_opportunities_json, []) || [] })), sources, categories, timeline });
+  } catch (error) {
+    console.error('dashboard fallback to preview', error);
+    return json(previewData(category));
+  }
 }
 
 async function topicDetail(env, id) {
+  if (id.startsWith('preview-')) {
+    const topic = previewData('').topics.find(t=>t.id===id);
+    return topic ? json({...topic,sources:[],snapshots:previewData('').timeline.map(x=>({captured_at:x.t,score:x.score,breakout_score:x.breakout}))}) : json({error:'not found'},{status:404});
+  }
   const topic = await env.DB.prepare(`SELECT * FROM topics WHERE id=?`).bind(id).first();
   if (!topic) return json({ error: 'not found' }, { status: 404 });
   const { results: sources = [] } = await env.DB.prepare(`SELECT source_id,title,url,rank,captured_at FROM topic_sources WHERE topic_id=? ORDER BY captured_at DESC LIMIT 50`).bind(id).all();
@@ -27,10 +57,10 @@ async function subscribe(env, request) {
   const body = await request.json();
   const email = String(body.email || '').trim().toLowerCase();
   if (!/^\S+@\S+\.\S+$/.test(email)) return json({ error: 'invalid email' }, { status: 400 });
+  if (!env.DB) return json({ok:true,preview:true});
   const categories = Array.isArray(body.categories) && body.categories.length ? body.categories.slice(0, 12) : ['综合'];
   const now = new Date().toISOString();
-  await env.DB.prepare(`INSERT INTO subscribers(email,categories_json,created_at,updated_at) VALUES(?,?,?,?) ON CONFLICT(email) DO UPDATE SET active=1,categories_json=excluded.categories_json,updated_at=excluded.updated_at`)
-    .bind(email, JSON.stringify(categories), now, now).run();
+  await env.DB.prepare(`INSERT INTO subscribers(email,categories_json,created_at,updated_at) VALUES(?,?,?,?) ON CONFLICT(email) DO UPDATE SET active=1,categories_json=excluded.categories_json,updated_at=excluded.updated_at`).bind(email, JSON.stringify(categories), now, now).run();
   return json({ ok: true });
 }
 
