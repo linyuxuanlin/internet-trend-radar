@@ -6,9 +6,10 @@ const DAILYHOT_BASE = (process.env.DAILYHOT_BASE || 'https://api-hot.imsyy.top')
 const NOW = new Date();
 const nowIso = NOW.toISOString();
 
+// Only keep aggregator-backed sources that still lack an independent direct collector.
+// Bilibili, Baidu, Toutiao and Juejin are enriched later from their direct sources.
 const DAILYHOT_SOURCES = [
-  ['weibo', '微博'], ['zhihu', '知乎'], ['bilibili', '哔哩哔哩'], ['baidu', '百度'],
-  ['douyin', '抖音'], ['toutiao', '今日头条'], ['juejin', '稀土掘金'], ['hupu', '虎扑']
+  ['weibo', '微博'], ['zhihu', '知乎'], ['douyin', '抖音'], ['hupu', '虎扑']
 ];
 
 function clamp(n, min = 0, max = 100) {
@@ -292,7 +293,8 @@ async function main() {
     id, name, region: 'cn', kind: 'aggregator', run: () => collectDailyHot(id, name)
   }));
   jobs.push({ id: 'v2ex', name: 'V2EX', region: 'cn', kind: 'official-api', run: collectV2EX });
-  jobs.push({ id: '36kr', name: '36氪', region: 'cn', kind: 'official-rss', run: collect36Kr });
+  // 36Kr is intentionally collected only by scripts/enrich-36kr.mjs, which has
+  // resilient official RSS fallbacks and is required by both CI and Pages.
   jobs.push({ id: 'hackernews', name: 'Hacker News', region: 'global', kind: 'official-api', run: collectHackerNews });
   jobs.push({ id: 'github', name: 'GitHub', region: 'global', kind: 'official-api', run: collectGitHub });
 
