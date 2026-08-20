@@ -23,9 +23,41 @@ async function ensureInitialData(env) {
   }
 }
 
+async function debugStatus(env) {
+  const status = {
+    db: Boolean(env.DB),
+    raw_items: null,
+    topics: null,
+    sources: null,
+    error: null,
+    generatedAt: new Date().toISOString()
+  };
+
+  if (!env.DB) return status;
+
+  try {
+    const [raw, topics, sources] = await Promise.all([
+      env.DB.prepare('SELECT COUNT(*) as count FROM raw_items').first(),
+      env.DB.prepare('SELECT COUNT(*) as count FROM topics').first(),
+      env.DB.prepare('SELECT COUNT(*) as count FROM sources').first()
+    ]);
+    status.raw_items = Number(raw?.count || 0);
+    status.topics = Number(topics?.count || 0);
+    status.sources = Number(sources?.count || 0);
+  } catch (err) {
+    status.error = String(err?.message || err);
+  }
+
+  return status;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (url.pathname === '/api/debug') {
+      return Response.json(await debugStatus(env));
+    }
 
     if (url.pathname === '/api/dashboard') {
       const init = await ensureInitialData(env);
