@@ -26,6 +26,8 @@ jobs:
         run: |
           cp public/index.html /tmp/index.html
           node scripts/patch-pages-index.mjs
+          grep -q "snapshot stale" public/index.html
+          grep -q "3\*60\*60\*1000" public/index.html
           python3 - <<'PY' > /tmp/frontend-pages.js
           from pathlib import Path
           import re
@@ -45,12 +47,15 @@ jobs:
           const d = require('./public/data/dashboard.json');
           const healthy = (d.sources || []).filter(s => s.last_success_at);
           const directCn = healthy.filter(s => s.region === 'cn' && ['official-api', 'official-rss'].includes(s.kind));
+          const generatedAt = Date.parse(d.generatedAt);
+          const ageMs = Date.now() - generatedAt;
           if (d.preview !== false) throw new Error('preview must be false');
           if (d.ready !== true) throw new Error('ready must be true');
           if (!Array.isArray(d.topics) || d.topics.length === 0) throw new Error('no real topics');
+          if (!Number.isFinite(generatedAt) || ageMs < -5 * 60 * 1000 || ageMs > 10 * 60 * 1000) throw new Error(`snapshot timestamp not fresh: ageMs=${ageMs}`);
           if (healthy.length === 0) throw new Error('no healthy real sources');
           if (directCn.length < 3) throw new Error(`need >=3 healthy direct Chinese sources; got ${directCn.map(s => s.id).join(',')}`);
           if (!directCn.some(s => s.id === 'sspai')) throw new Error('SSPAI direct RSS source is not healthy');
           if (!directCn.some(s => s.id === 'bilibili')) throw new Error('Bilibili direct popular source is not healthy');
-          console.log(`verified real topics=${d.topics.length}, healthySources=${healthy.length}, directCn=${directCn.map(s => s.id).join(',')}`);
+          console.log(`verified real topics=${d.topics.length}, healthySources=${healthy.length}, directCn=${directCn.map(s => s.id).join(',')}, ageSeconds=${Math.round(ageMs/1000)}`);
           NODE

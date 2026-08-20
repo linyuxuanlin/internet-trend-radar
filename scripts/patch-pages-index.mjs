@@ -31,6 +31,11 @@ const newLoad = `async function load(){
       if(!r.ok)throw new Error('snapshot HTTP '+r.status);
       const d=await r.json();
       if(d.preview!==false||d.ready!==true||!Array.isArray(d.topics)||!d.topics.length)throw new Error('snapshot is not real-data ready');
+      const generatedAt=Date.parse(d.generatedAt);
+      const snapshotAge=Date.now()-generatedAt;
+      if(!Number.isFinite(generatedAt))throw new Error('snapshot timestamp invalid');
+      if(snapshotAge < -5*60*1000)throw new Error('snapshot timestamp is in the future');
+      if(snapshotAge > 3*60*60*1000)throw new Error('snapshot stale: '+Math.round(snapshotAge/60000)+' minutes old');
       state.staticMode=true;
       state.snapshot=d;
       const topics=state.category==='全部'?d.topics:d.topics.filter(t=>t.category===state.category);
@@ -40,7 +45,7 @@ const newLoad = `async function load(){
       $('#liveText').textContent='真实快照 · '+new Date(d.generatedAt).toLocaleTimeString('zh-CN',{hour12:false,hour:'2-digit',minute:'2-digit'});
       return;
     }catch(snapshotError){
-      $('#liveText').textContent='真实数据暂不可用';
+      $('#liveText').textContent=String(snapshotError?.message||'').includes('snapshot stale')?'真实数据快照已过期':'真实数据暂不可用';
       console.error('API failed',apiError,'snapshot failed',snapshotError);
     }
   }
@@ -72,4 +77,4 @@ replaceOnce(
 );
 
 await writeFile(path, html, 'utf8');
-console.log('Patched public/index.html for GitHub Pages static real-data fallback.');
+console.log('Patched public/index.html for GitHub Pages static real-data fallback with a 3-hour freshness guard.');
