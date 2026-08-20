@@ -12,6 +12,7 @@ jobs:
       - name: Syntax check
         run: |
           find src -name '*.js' -print0 | xargs -0 -n1 node --check
+          find scripts -name '*.mjs' -print0 | xargs -0 -r -n1 node --check
           python3 - <<'PY' > /tmp/frontend.js
           from pathlib import Path
           import re
@@ -20,3 +21,17 @@ jobs:
           print('\n'.join(blocks))
           PY
           node --check /tmp/frontend.js
+
+      - name: Validate Pages patch
+        run: |
+          cp public/index.html /tmp/index.html
+          node scripts/patch-pages-index.mjs
+          python3 - <<'PY' > /tmp/frontend-pages.js
+          from pathlib import Path
+          import re
+          s=Path('public/index.html').read_text()
+          blocks=re.findall(r'<script>([\s\S]*?)</script>',s)
+          print('\n'.join(blocks))
+          PY
+          node --check /tmp/frontend-pages.js
+          mv /tmp/index.html public/index.html
