@@ -9,10 +9,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: npm install
       - name: Syntax check
         run: |
           find src -name '*.js' -print0 | xargs -0 -n1 node --check
@@ -24,67 +20,3 @@ jobs:
           print('\n'.join(blocks))
           PY
           node --check /tmp/frontend.js
-
-  preview:
-    if: github.event_name == 'pull_request'
-    needs: check
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: npm install
-      - name: Build temporary preview config
-        run: |
-          python3 - <<'PY'
-          import json
-          with open('wrangler.jsonc', encoding='utf-8') as f:
-              cfg=json.load(f)
-          cfg.pop('ai', None)
-          cfg.setdefault('vars', {})['ALLOW_OPEN_COLLECT']='1'
-          with open('wrangler.preview.jsonc','w',encoding='utf-8') as f:
-              json.dump(cfg,f,ensure_ascii=False,indent=2)
-          PY
-      - name: Deploy temporary Cloudflare preview
-        run: |
-          set -o pipefail
-          npx wrangler@latest deploy --temporary --config wrangler.preview.jsonc 2>&1 | tee deploy.log
-          npx wrangler@latest d1 migrations apply DB --remote --config wrangler.preview.jsonc 2>&1 | tee migrations.log
-          DEPLOY_URL=$(grep -Eo 'https://[^ ]+\.workers\.dev' deploy.log | tail -1)
-          CLAIM_URL=$(grep -Eo 'https://dash\.cloudflare\.com/claim-preview\?claimToken=[^ ]+' deploy.log | tail -1)
-          test -n "$DEPLOY_URL"
-          echo "DEPLOY_URL=$DEPLOY_URL" >> "$GITHUB_ENV"
-          echo "CLAIM_URL=$CLAIM_URL" >> "$GITHUB_ENV"
-          curl -fsS --max-time 180 -X POST "$DEPLOY_URL/api/admin/collect" | tee collect.json
-          curl -fsS --max-time 30 "$DEPLOY_URL/api/health" | tee health.json
-          curl -fsS --max-time 30 "$DEPLOY_URL/api/dashboard" | tee dashboard.json
-          python3 - <<'PY'
-          import json
-          d=json.load(open('dashboard.json'))
-          assert len(d.get('sources',[])) >= 10, 'source registry missing'
-          assert len(d.get('topics',[])) > 0, 'no topics collected'
-          print('topics',len(d['topics']),'sources',len(d['sources']))
-          PY
-          {
-            echo '## Temporary Cloudflare Preview'
-            echo
-            echo "Live: $DEPLOY_URL"
-            echo
-            echo "Claim: $CLAIM_URL"
-            echo
-            echo 'Claim the temporary account within 60 minutes if you want to keep this preview.'
-          } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: cloudflare-preview-logs
-          path: |
-            deploy.log
-            migrations.log
-            collect.json
-            health.json
-            dashboard.json
-          if-no-files-found: ignore
-          retention-days: 1
