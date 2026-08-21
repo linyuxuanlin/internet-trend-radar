@@ -44,6 +44,7 @@ jobs:
           REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu,ithome,solidot
           GITHUB_API_TOKEN: ${{ github.token }}
           AI_SOURCE_URL: https://feat-pages-ai-opportunity-overlay-internet-trend-radar.linyuxuanlin.workers.dev/api/dashboard
+          MIN_VALID_AI_SUMMARIES: '1'
         run: |
           node scripts/validate-rss-source-freshness.mjs
           node scripts/build-static-dashboard.mjs
@@ -60,6 +61,7 @@ jobs:
           BUILD_SHA="$GITHUB_SHA" node scripts/stamp-build-provenance.mjs
           node scripts/write-health-manifest.mjs
           MIN_HEALTHY_SOURCES=12 MIN_DIRECT_CN_SOURCES=10 node scripts/validate-real-dashboard.mjs
+          node scripts/validate-ai-quality.mjs
           EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-build-provenance.mjs
           EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-health-manifest.mjs
 
