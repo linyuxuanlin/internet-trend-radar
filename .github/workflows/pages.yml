@@ -23,13 +23,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
           node-version: '24'
           package-manager-cache: false
-
       - name: Build real trend snapshot
         env:
           REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu,ithome,solidot
@@ -49,7 +47,6 @@ jobs:
           node scripts/write-opportunities.mjs
           BUILD_SHA="$GITHUB_SHA" node scripts/stamp-build-provenance.mjs
           node scripts/write-health-manifest.mjs
-
       - name: Verify production real-data and AI gates
         env:
           REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu,ithome,solidot
@@ -59,46 +56,38 @@ jobs:
           node scripts/validate-ai-assets.mjs
           EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-build-provenance.mjs
           EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-health-manifest.mjs
-
-      - name: Patch Pages frontend fallback
-        run: node scripts/patch-pages-index.mjs
-
+      - name: Patch Pages frontend
+        run: |
+          node scripts/patch-pages-index.mjs
+          node scripts/patch-ai-opportunities-panel.mjs
       - name: Add Coffee Lab mobile MVPs
         run: |
           mkdir -p public/coffee-mvps
           cp coffee-mvps/index.html public/coffee-mvps/index.html
-
       - name: Setup Pages
         uses: actions/configure-pages@v5
-
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./public
-
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
-
       - name: Verify live Pages snapshot
         timeout-minutes: 3
         env:
           DASHBOARD_URL: ${{ steps.deployment.outputs.page_url }}data/dashboard.json
           HEALTH_URL: ${{ steps.deployment.outputs.page_url }}data/health.json
           OPPORTUNITIES_URL: ${{ steps.deployment.outputs.page_url }}data/opportunities.json
+          EXPECTED_BUILD_SHA: ${{ github.sha }}
           MIN_HEALTHY_SOURCES: '12'
           MIN_DIRECT_CN_SOURCES: '10'
           REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu,ithome,solidot
-          EXPECTED_BUILD_SHA: ${{ github.sha }}
         run: |
           for attempt in 1 2 3 4 5 6; do
-            echo "Live snapshot verification attempt ${attempt}/6: ${DASHBOARD_URL}"
             if node scripts/validate-real-dashboard.mjs && node scripts/validate-build-provenance.mjs && node scripts/validate-health-manifest.mjs && node scripts/validate-opportunities-live.mjs && node scripts/validate-ai-assets.mjs; then
               exit 0
             fi
-            if [ "$attempt" -lt 6 ]; then
-              sleep 10
-            fi
+            [ "$attempt" -lt 6 ] && sleep 10
           done
-          echo "Published Pages dashboard/health/AI assets never passed real-data and provenance gates" >&2
           exit 1
