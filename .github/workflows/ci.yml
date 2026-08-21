@@ -49,3 +49,17 @@ jobs:
           REQUIRE_TOUTIAO=1 node scripts/enrich-toutiao.mjs
           REQUIRE_HUPU=1 node scripts/enrich-hupu.mjs
           MIN_HEALTHY_SOURCES=10 MIN_DIRECT_CN_SOURCES=8 REQUIRED_DIRECT_CN=v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu node scripts/validate-real-dashboard.mjs
+
+      - name: Smoke-test remote dashboard validation
+        timeout-minutes: 1
+        run: |
+          python3 -m http.server 4173 --directory public >/tmp/radar-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in 1 2 3 4 5; do
+            if curl --fail --silent http://127.0.0.1:4173/data/dashboard.json >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          DASHBOARD_URL=http://127.0.0.1:4173/data/dashboard.json MIN_HEALTHY_SOURCES=10 MIN_DIRECT_CN_SOURCES=8 REQUIRED_DIRECT_CN=v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu node scripts/validate-real-dashboard.mjs

@@ -60,4 +60,25 @@ jobs:
           path: ./public
 
       - name: Deploy
+        id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Verify live Pages real-data snapshot
+        timeout-minutes: 3
+        env:
+          DASHBOARD_URL: ${{ steps.deployment.outputs.page_url }}data/dashboard.json
+          MIN_HEALTHY_SOURCES: '10'
+          MIN_DIRECT_CN_SOURCES: '8'
+          REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            echo "Live snapshot verification attempt ${attempt}/6: ${DASHBOARD_URL}"
+            if node scripts/validate-real-dashboard.mjs; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 6 ]; then
+              sleep 10
+            fi
+          done
+          echo "Published Pages dashboard never passed the real-data gate" >&2
+          exit 1
