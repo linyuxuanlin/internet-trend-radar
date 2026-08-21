@@ -21,6 +21,7 @@ async function ensureInitialData(env) {
 async function debugStatus(env) {
   const status = {
     db: Boolean(env.DB),
+    schema: { ok: false, error: null, tables: {} },
     ready: false,
     raw_items: null,
     topics: null,
@@ -34,6 +35,23 @@ async function debugStatus(env) {
   };
   if (!env.DB) {
     status.error = 'missing DB binding';
+    status.schema.error = 'missing DB binding';
+    return status;
+  }
+
+  const requiredTables = ['sources', 'raw_items', 'topics', 'topic_snapshots', 'topic_sources'];
+  try {
+    const { results = [] } = await env.DB.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name IN (${requiredTables.map(() => '?').join(',')}) ORDER BY name`).bind(...requiredTables).all();
+    const present = new Set(results.map(row => row.name));
+    for (const table of requiredTables) status.schema.tables[table] = present.has(table);
+    status.schema.ok = requiredTables.every(table => status.schema.tables[table]);
+    if (!status.schema.ok) {
+      status.schema.error = `missing tables: ${requiredTables.filter(table => !status.schema.tables[table]).join(', ')}`;
+      return status;
+    }
+  } catch (err) {
+    status.schema.error = String(err?.message || err);
+    status.error = `schema probe failed: ${status.schema.error}`;
     return status;
   }
 
@@ -66,6 +84,14 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    // Debug/health must remain reachable even when D1 schema initialization is the failing dependency.
+    if (url.pathname === '/api/debug') {
+      return Response.json(await debugStatus(env));
+    }
+    if (url.pathname === '/api/health') {
+      return routeApi(env, request);
+    }
+
     if (url.pathname.startsWith('/api/') && env.DB) {
       try {
         await ensureSchema(env);
@@ -78,10 +104,6 @@ export default {
           generatedAt: new Date().toISOString()
         }, { status: 503 });
       }
-    }
-
-    if (url.pathname === '/api/debug') {
-      return Response.json(await debugStatus(env));
     }
 
     if (url.pathname === '/api/bootstrap' && request.method === 'POST') {
