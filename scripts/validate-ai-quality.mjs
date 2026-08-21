@@ -6,12 +6,12 @@ const bad = [];
 let checked = 0;
 
 for (const topic of topics) {
-  const summary = String(topic.ai_summary || topic.ai?.summary || '').trim();
-  const whyNow = String(topic.ai_why_now || topic.ai?.why_now || '').trim();
-  const opportunities = Array.isArray(topic.opportunities) ? topic.opportunities : (Array.isArray(topic.ai?.opportunities) ? topic.ai.opportunities : []);
-  const updatedAt = String(topic.ai_updated_at || topic.ai?.updated_at || '').trim();
-  if (!summary && !whyNow && !opportunities.length && !updatedAt) continue;
+  if (topic.ai_provenance?.verified_non_heuristic !== true) continue;
   checked++;
+  const summary = String(topic.ai_summary || '').trim();
+  const whyNow = String(topic.ai_why_now || '').trim();
+  const opportunities = Array.isArray(topic.opportunities) ? topic.opportunities : [];
+  const updatedAt = String(topic.ai_updated_at || '').trim();
   const title = topic.canonical_title || topic.title || 'unknown';
   const reasons = [];
   if (summary.length < 20) reasons.push('summary');
@@ -27,4 +27,4 @@ if (bad.length) throw new Error(`AI quality check failed: ${bad.slice(0, 8).join
 const required = Math.max(1, Number(process.env.MIN_VALID_AI_SUMMARIES || 1));
 if (checked < required) throw new Error(`AI quality coverage too low: ${checked} < ${required}`);
 if (dashboard.ai?.matchedCount != null && Number(dashboard.ai.matchedCount) !== checked) throw new Error(`AI matchedCount mismatch: ${dashboard.ai.matchedCount} != ${checked}`);
-console.log(`Validated AI quality for ${checked} AI topics (${topics.length} total topics)`);
+console.log(`Validated ${checked} verified AI summaries (${topics.length} total topics)`);
