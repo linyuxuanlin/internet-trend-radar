@@ -55,7 +55,7 @@ for (const topic of topics) {
   }
 }
 
-if (health.schemaVersion !== 1) fail(`schemaVersion must be 1; got ${health.schemaVersion}`);
+if (health.schemaVersion !== 2) fail(`schemaVersion must be 2; got ${health.schemaVersion}`);
 if (health.preview !== false || dashboard.preview !== false) fail('preview must be false in dashboard and health manifest');
 if (health.ready !== true || dashboard.ready !== true) fail('ready must be true in dashboard and health manifest');
 if (health.generatedAt !== dashboard.generatedAt) fail(`generatedAt mismatch: health=${health.generatedAt} dashboard=${dashboard.generatedAt}`);
@@ -64,10 +64,37 @@ if (EXPECTED_BUILD_SHA && String(health.buildSha || '').toLowerCase() !== EXPECT
 if (Number(health.topicCount) !== topics.length) fail(`topicCount mismatch: health=${health.topicCount} dashboard=${topics.length}`);
 if (Number(health.sourceCount) !== sources.length) fail(`sourceCount mismatch: health=${health.sourceCount} dashboard=${sources.length}`);
 if (Number(health.healthySourceCount) !== healthySources.length) fail(`healthySourceCount mismatch: health=${health.healthySourceCount} dashboard=${healthySources.length}`);
+if (Number(health.degradedSourceCount) !== sources.length - healthySources.length) fail(`degradedSourceCount mismatch: health=${health.degradedSourceCount} dashboard=${sources.length - healthySources.length}`);
 
 const generatedAt = Date.parse(health.generatedAt);
 if (!Number.isFinite(generatedAt)) fail(`generatedAt must be valid: ${health.generatedAt}`);
 else if (Date.now() - generatedAt > MAX_AGE_MS) fail(`health manifest is stale: generatedAt=${health.generatedAt}`);
+
+const sourceRows = Array.isArray(health.sourceHealth) ? health.sourceHealth : [];
+if (sourceRows.length !== sources.length) fail(`sourceHealth row count mismatch: health=${sourceRows.length} dashboard=${sources.length}`);
+for (const source of sources) {
+  const row = sourceRows.find(item => item?.id === source?.id);
+  if (!row) {
+    fail(`missing sourceHealth row: ${source?.id}`);
+    continue;
+  }
+  const expectedHealthy = Boolean(source?.last_success_at && Number(source?.last_item_count || 0) > 0);
+  const expectedRefs = Number(topicRefsBySource.get(source?.id) || 0);
+  const successMs = source?.last_success_at ? Date.parse(source.last_success_at) : NaN;
+  const expectedFreshness = Number.isFinite(successMs) && Number.isFinite(generatedAt)
+    ? Math.max(0, Math.round((generatedAt - successMs) / 1000))
+    : null;
+  if (row.name !== (source?.name || null)) fail(`source ${source?.id} name mismatch`);
+  if (row.healthy !== expectedHealthy) fail(`source ${source?.id} healthy mismatch: health=${row.healthy} expected=${expectedHealthy}`);
+  if (row.kind !== (source?.kind || null)) fail(`source ${source?.id} kind mismatch`);
+  if (row.region !== (source?.region || null)) fail(`source ${source?.id} region mismatch`);
+  if (Number(row.itemCount) !== Number(source?.last_item_count || 0)) fail(`source ${source?.id} itemCount mismatch`);
+  if (Number(row.topicRefs) !== expectedRefs) fail(`source ${source?.id} topicRefs mismatch`);
+  if (row.lastSuccessAt !== (source?.last_success_at || null)) fail(`source ${source?.id} lastSuccessAt mismatch`);
+  if (row.lastErrorAt !== (source?.last_error_at || null)) fail(`source ${source?.id} lastErrorAt mismatch`);
+  if (row.lastError !== (source?.last_error || null)) fail(`source ${source?.id} lastError mismatch`);
+  if (row.freshnessSeconds !== expectedFreshness) fail(`source ${source?.id} freshnessSeconds mismatch: health=${row.freshnessSeconds} expected=${expectedFreshness}`);
+}
 
 const requiredRows = Array.isArray(health.requiredDirect) ? health.requiredDirect : [];
 for (const id of REQUIRED_DIRECT_CN) {
@@ -98,6 +125,8 @@ if (!process.exitCode) {
     generatedAt: health.generatedAt,
     topicCount: health.topicCount,
     healthySourceCount: health.healthySourceCount,
-    requiredDirect: requiredRows.map(row => ({ id: row.id, itemCount: row.itemCount, topicRefs: row.topicRefs }))
+    degradedSourceCount: health.degradedSourceCount,
+    degradedSources: sourceRows.filter(row => !row.healthy).map(row => ({ id: row.id, lastError: row.lastError })),
+    requiredDirect: requiredRows.map(row => ({ id: row.id, itemCount: row.itemCount, topicRefs: row.topicRefs, freshnessSeconds: row.freshnessSeconds }))
   }));
 }
