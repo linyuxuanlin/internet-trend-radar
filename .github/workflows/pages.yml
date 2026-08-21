@@ -32,7 +32,7 @@ jobs:
 
       - name: Build real trend snapshot
         env:
-          REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu,ithome
+          REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu,ithome,solidot
           GITHUB_API_TOKEN: ${{ github.token }}
         run: |
           node scripts/build-static-dashboard.mjs
@@ -43,15 +43,16 @@ jobs:
           REQUIRE_TOUTIAO=1 node scripts/enrich-toutiao.mjs
           REQUIRE_HUPU=1 node scripts/enrich-hupu.mjs
           REQUIRE_ITHOME=1 node scripts/enrich-ithome.mjs
+          REQUIRE_SOLIDOT=1 node scripts/enrich-solidot.mjs
           node scripts/probe-degraded-sources.mjs
           BUILD_SHA="$GITHUB_SHA" node scripts/stamp-build-provenance.mjs
           node scripts/write-health-manifest.mjs
 
       - name: Verify production real-data gate
         env:
-          REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu,ithome
+          REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu,ithome,solidot
         run: |
-          MIN_HEALTHY_SOURCES=11 MIN_DIRECT_CN_SOURCES=9 node scripts/validate-real-dashboard.mjs
+          MIN_HEALTHY_SOURCES=12 MIN_DIRECT_CN_SOURCES=10 node scripts/validate-real-dashboard.mjs
           EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-build-provenance.mjs
           EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-health-manifest.mjs
 
@@ -80,9 +81,9 @@ jobs:
         env:
           DASHBOARD_URL: ${{ steps.deployment.outputs.page_url }}data/dashboard.json
           HEALTH_URL: ${{ steps.deployment.outputs.page_url }}data/health.json
-          MIN_HEALTHY_SOURCES: '11'
-          MIN_DIRECT_CN_SOURCES: '9'
-          REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu,ithome
+          MIN_HEALTHY_SOURCES: '12'
+          MIN_DIRECT_CN_SOURCES: '10'
+          REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu,ithome,solidot
           EXPECTED_BUILD_SHA: ${{ github.sha }}
         run: |
           for attempt in 1 2 3 4 5 6; do
