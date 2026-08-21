@@ -43,6 +43,15 @@ const ageMs = Date.now() - generatedAt;
 const topicRefsBySource = new Map();
 for (const topic of topics) {
   const refs = Array.isArray(topic?.sources) ? topic.sources : [];
+  const uniqueSourceIds = new Set(refs.map(ref => String(ref?.source_id || '').trim()).filter(Boolean));
+  const declaredSourceCount = Number(topic?.source_count);
+
+  if (!Number.isInteger(declaredSourceCount) || declaredSourceCount < 1) {
+    fail(`topic ${topic?.id || topic?.canonical_title || '<unknown>'} has invalid source_count: ${topic?.source_count}`);
+  } else if (declaredSourceCount !== uniqueSourceIds.size) {
+    fail(`topic ${topic?.id || topic?.canonical_title || '<unknown>'} source_count mismatch: declared=${declaredSourceCount} uniqueSources=${uniqueSourceIds.size}`);
+  }
+
   for (const ref of refs) {
     const sourceId = String(ref?.source_id || '').trim();
     if (!sourceId) continue;
@@ -71,6 +80,7 @@ for (const required of REQUIRED_DIRECT_CN) {
   const refs = topicRefsBySource.get(required) || [];
   const distinctTopicIds = new Set(refs.map(({ topic }) => String(topic?.id || topic?.fingerprint || topic?.canonical_title || '')));
   const expectedCount = Number(source?.last_item_count || 0);
+  const externalIds = new Set();
 
   if (refs.length < MIN_TOPICS_PER_REQUIRED_DIRECT) {
     fail(`required direct source ${required} has too few topic references: ${refs.length} < ${MIN_TOPICS_PER_REQUIRED_DIRECT}`);
@@ -107,6 +117,27 @@ for (const required of REQUIRED_DIRECT_CN) {
     if (!hostnameMatches(url.hostname.toLowerCase(), allowedHosts)) {
       fail(`required direct source ${required} has off-domain topic URL: ${url.hostname}`);
     }
+
+    const externalId = String(ref?.external_id || '').trim();
+    if (!externalId) {
+      fail(`required direct source ${required} has topic without external_id`);
+    } else if (externalIds.has(externalId)) {
+      fail(`required direct source ${required} has duplicate external_id: ${externalId}`);
+    } else {
+      externalIds.add(externalId);
+    }
+
+    const capturedAt = Date.parse(ref?.captured_at);
+    if (!Number.isFinite(capturedAt)) {
+      fail(`required direct source ${required} has invalid captured_at: ${ref?.captured_at}`);
+    } else {
+      const capturedAgeMs = Date.now() - capturedAt;
+      if (capturedAgeMs < -FUTURE_SKEW_MS) {
+        fail(`required direct source ${required} captured_at is too far in the future: ${ref?.captured_at}`);
+      } else if (capturedAgeMs > MAX_AGE_MS) {
+        fail(`required direct source ${required} captured_at is stale: ${ref?.captured_at}`);
+      }
+    }
   }
 }
 
@@ -119,6 +150,7 @@ if (!process.exitCode) {
     requiredDirect: REQUIRED_DIRECT_CN.map(id => ({
       id,
       topicRefs: (topicRefsBySource.get(id) || []).length,
+      uniqueExternalIds: new Set((topicRefsBySource.get(id) || []).map(({ ref }) => String(ref?.external_id || '').trim()).filter(Boolean)).size,
       officialHosts: OFFICIAL_HOSTS[id] || []
     })),
     generatedAt: dashboard.generatedAt,
