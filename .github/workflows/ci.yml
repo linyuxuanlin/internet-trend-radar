@@ -41,7 +41,7 @@ jobs:
       - name: Real-data smoke test
         timeout-minutes: 5
         env:
-          REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu
+          REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu,ithome
           GITHUB_API_TOKEN: ${{ github.token }}
         run: |
           node scripts/build-static-dashboard.mjs
@@ -51,17 +51,18 @@ jobs:
           REQUIRE_BAIDU=1 node scripts/enrich-baidu.mjs
           REQUIRE_TOUTIAO=1 node scripts/enrich-toutiao.mjs
           REQUIRE_HUPU=1 node scripts/enrich-hupu.mjs
+          REQUIRE_ITHOME=1 node scripts/enrich-ithome.mjs
           node scripts/probe-degraded-sources.mjs
           BUILD_SHA="$GITHUB_SHA" node scripts/stamp-build-provenance.mjs
           node scripts/write-health-manifest.mjs
-          MIN_HEALTHY_SOURCES=10 MIN_DIRECT_CN_SOURCES=8 node scripts/validate-real-dashboard.mjs
+          MIN_HEALTHY_SOURCES=11 MIN_DIRECT_CN_SOURCES=9 node scripts/validate-real-dashboard.mjs
           EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-build-provenance.mjs
           EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-health-manifest.mjs
 
       - name: Smoke-test remote dashboard validation
         timeout-minutes: 1
         env:
-          REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu
+          REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu,ithome
         run: |
           python3 -m http.server 4173 --directory public >/tmp/radar-http.log 2>&1 &
           server_pid=$!
@@ -72,6 +73,6 @@ jobs:
             fi
             sleep 1
           done
-          DASHBOARD_URL=http://127.0.0.1:4173/data/dashboard.json MIN_HEALTHY_SOURCES=10 MIN_DIRECT_CN_SOURCES=8 node scripts/validate-real-dashboard.mjs
+          DASHBOARD_URL=http://127.0.0.1:4173/data/dashboard.json MIN_HEALTHY_SOURCES=11 MIN_DIRECT_CN_SOURCES=9 node scripts/validate-real-dashboard.mjs
           DASHBOARD_URL=http://127.0.0.1:4173/data/dashboard.json EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-build-provenance.mjs
           DASHBOARD_URL=http://127.0.0.1:4173/data/dashboard.json HEALTH_URL=http://127.0.0.1:4173/data/health.json EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-health-manifest.mjs
