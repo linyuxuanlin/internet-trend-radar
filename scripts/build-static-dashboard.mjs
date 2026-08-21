@@ -1,15 +1,16 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { categoryFor, fingerprintTitle, numberFromUnknown, scoreItem, topicStatus } from '../src/utils.js';
+import { categoryFor, fingerprintTitle, scoreItem, topicStatus } from '../src/utils.js';
 
 const OUT = new URL('../public/data/dashboard.json', import.meta.url);
-const DAILYHOT_BASE = (process.env.DAILYHOT_BASE || 'https://api-hot.imsyy.top').replace(/\/$/, '');
 const NOW = new Date();
 const nowIso = NOW.toISOString();
 
-// Only keep aggregator-backed sources that still lack an independent direct collector.
-// Hupu is intentionally excluded because scripts/enrich-hupu.mjs provides the required
-// official-page collector later in both CI and Pages builds.
-const DAILYHOT_SOURCES = [
+// These sources still lack independent direct collectors. Their shared DailyHot
+// upstream has repeatedly failed DNS resolution in GitHub Actions. Do not spend
+// three full collection attempts on a known-dead host; keep them transparently
+// degraded and let scripts/probe-degraded-sources.mjs perform one shared live
+// diagnostic probe later in the build.
+const DEGRADED_DAILYHOT_SOURCES = [
   ['weibo', '微博'], ['zhihu', '知乎'], ['douyin', '抖音']
 ];
 
@@ -25,7 +26,7 @@ async function fetchResponse(url, init = {}, timeoutMs = 12000) {
       ...init,
       signal: controller.signal,
       headers: {
-        'user-agent': 'internet-trend-radar-static-builder/1.1',
+        'user-agent': 'internet-trend-radar-static-builder/1.2',
         ...(init.headers || {})
       }
     });
@@ -42,28 +43,6 @@ async function fetchJson(url, init = {}, timeoutMs = 12000) {
     headers: { accept: 'application/json', ...(init.headers || {}) }
   }, timeoutMs);
   return await res.json();
-}
-
-async function fetchText(url, init = {}, timeoutMs = 12000) {
-  const res = await fetchResponse(url, {
-    ...init,
-    headers: { accept: 'application/rss+xml, application/xml, text/xml, text/plain;q=0.9, */*;q=0.5', ...(init.headers || {}) }
-  }, timeoutMs);
-  return await res.text();
-}
-
-function pickHeat(item) {
-  return Math.max(0, ...[
-    item?.hot, item?.hotValue, item?.heat, item?.score, item?.view, item?.views,
-    item?.data?.view, item?.data?.like
-  ].map(numberFromUnknown));
-}
-
-function pickEngagement(item) {
-  return [
-    item?.comments, item?.comment, item?.reply, item?.data?.reply,
-    item?.data?.favorite, item?.data?.share, item?.data?.like
-  ].map(numberFromUnknown).reduce((a, b) => a + b, 0);
 }
 
 function makeTopic({ sourceId, title, url = '', rank = 1, total = 50, heat = 0, engagement = 0, summary = '' }) {
@@ -100,25 +79,17 @@ function healthySource(id, name, region, kind, count) {
   };
 }
 
-async function collectDailyHot(sourceId, sourceName) {
-  const body = await fetchJson(`${DAILYHOT_BASE}/${encodeURIComponent(sourceId)}`);
-  const list = Array.isArray(body?.data) ? body.data : [];
-  if (!list.length) throw new Error('empty data');
-  const topics = list.slice(0, 30).map((item, i) => {
-    const title = String(item?.title || item?.name || item?.word || item?.desc || '').trim();
-    if (!title) return null;
-    return makeTopic({
-      sourceId,
-      title,
-      url: item?.url || item?.mobileUrl || item?.link || '',
-      rank: i + 1,
-      total: list.length,
-      heat: pickHeat(item),
-      engagement: pickEngagement(item)
-    });
-  }).filter(Boolean);
-  if (!topics.length) throw new Error('no usable titles');
-  return { topics, source: healthySource(sourceId, sourceName, 'cn', 'aggregator', topics.length) };
+function degradedDailyHotSource(id, name) {
+  return {
+    id,
+    name,
+    region: 'cn',
+    kind: 'aggregator',
+    last_success_at: null,
+    last_error_at: nowIso,
+    last_error: 'DailyHot collection skipped after repeated shared-upstream DNS failures; awaiting one shared live diagnostic probe.',
+    last_item_count: 0
+  };
 }
 
 async function collectV2EX() {
@@ -144,77 +115,6 @@ async function collectV2EX() {
   }).filter(Boolean);
   if (!topics.length) throw new Error('no usable titles');
   return { topics, source: healthySource('v2ex', 'V2EX', 'cn', 'official-api', topics.length) };
-}
-
-function decodeXml(text = '') {
-  return String(text)
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, '&');
-}
-
-function stripHtml(text = '') {
-  return decodeXml(text).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-function tagValue(block, tag) {
-  const match = block.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`, 'i'));
-  return match ? decodeXml(match[1]).trim() : '';
-}
-
-function parseRssItems(xml) {
-  const blocks = String(xml).match(/<item(?:\s[^>]*)?>[\s\S]*?<\/item>/gi) || [];
-  return blocks.map(block => ({
-    title: stripHtml(tagValue(block, 'title')),
-    link: stripHtml(tagValue(block, 'link')),
-    description: stripHtml(tagValue(block, 'description')),
-    pubDate: stripHtml(tagValue(block, 'pubDate'))
-  })).filter(x => x.title);
-}
-
-async function collect36Kr() {
-  const feeds = [
-    ['https://36kr.com/feed', '综合资讯'],
-    ['https://36kr.com/feed-newsflash', '最新快讯']
-  ];
-  const collected = [];
-  const errors = [];
-
-  for (const [url, label] of feeds) {
-    try {
-      const xml = await fetchText(url);
-      const rows = parseRssItems(xml);
-      if (!rows.length) throw new Error('RSS contains no items');
-      for (const row of rows.slice(0, 20)) collected.push({ ...row, label });
-    } catch (error) {
-      errors.push(`${label}: ${String(error?.message || error)}`);
-    }
-  }
-
-  const seen = new Set();
-  const list = collected.filter(row => {
-    const key = fingerprintTitle(row.title);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  }).slice(0, 30);
-
-  if (!list.length) throw new Error(errors.join('; ') || 'empty data');
-  const topics = list.map((item, i) => makeTopic({
-    sourceId: '36kr',
-    title: item.title,
-    url: item.link,
-    rank: i + 1,
-    total: list.length,
-    heat: 0,
-    engagement: 0,
-    summary: `36氪 · ${item.label}${item.pubDate ? ` · ${item.pubDate}` : ''}`
-  }));
-  return { topics, source: healthySource('36kr', '36氪', 'cn', 'official-rss', topics.length) };
 }
 
 async function collectHackerNews() {
@@ -289,15 +189,16 @@ function categorySummary(topics) {
 
 async function main() {
   const topics = [];
-  const sources = [];
-  const jobs = DAILYHOT_SOURCES.map(([id, name]) => ({
-    id, name, region: 'cn', kind: 'aggregator', run: () => collectDailyHot(id, name)
-  }));
-  jobs.push({ id: 'v2ex', name: 'V2EX', region: 'cn', kind: 'official-api', run: collectV2EX });
-  // 36Kr is intentionally collected only by scripts/enrich-36kr.mjs, which has
-  // resilient official RSS fallbacks and is required by both CI and Pages.
-  jobs.push({ id: 'hackernews', name: 'Hacker News', region: 'global', kind: 'official-api', run: collectHackerNews });
-  jobs.push({ id: 'github', name: 'GitHub', region: 'global', kind: 'official-api', run: collectGitHub });
+  const sources = DEGRADED_DAILYHOT_SOURCES.map(([id, name]) => degradedDailyHotSource(id, name));
+  const jobs = [
+    { id: 'v2ex', name: 'V2EX', region: 'cn', kind: 'official-api', run: collectV2EX },
+    { id: 'hackernews', name: 'Hacker News', region: 'global', kind: 'official-api', run: collectHackerNews },
+    { id: 'github', name: 'GitHub', region: 'global', kind: 'official-api', run: collectGitHub }
+  ];
+
+  for (const source of sources) {
+    console.warn(`SKIP ${source.id}: ${source.last_error}`);
+  }
 
   for (const job of jobs) {
     try {
