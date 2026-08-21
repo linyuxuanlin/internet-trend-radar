@@ -31,7 +31,14 @@ function classifyAIBlocker(ai, schemaOk = true) {
 async function debugStatus(env) {
   const status = {
     db: Boolean(env.DB),
-    schema: { ok: false, error: null, tables: {} },
+    schema: {
+      ok: false,
+      error: null,
+      tables: {},
+      bootstrap_attempted: false,
+      bootstrap_ok: null,
+      bootstrap_error: null
+    },
     ai: {
       binding: Boolean(env.AI),
       model: env.AI_MODEL || '@cf/zai-org/glm-4.7-flash',
@@ -62,6 +69,19 @@ async function debugStatus(env) {
     return status;
   }
 
+  // Diagnostics are also the safest place to repair an incomplete auto-provisioned D1:
+  // ensureSchema() is idempotent, and failures are captured rather than taking /api/debug down.
+  // This means the live CI probe can both expose the exact bootstrap failure and recover from
+  // a merely uninitialized database without requiring a privileged/manual migration endpoint.
+  status.schema.bootstrap_attempted = true;
+  try {
+    await ensureSchema(env);
+    status.schema.bootstrap_ok = true;
+  } catch (err) {
+    status.schema.bootstrap_ok = false;
+    status.schema.bootstrap_error = String(err?.message || err);
+  }
+
   const requiredTables = ['sources', 'raw_items', 'topics', 'topic_snapshots', 'topic_sources'];
   try {
     const { results = [] } = await env.DB.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name IN (${requiredTables.map(() => '?').join(',')}) ORDER BY name`).bind(...requiredTables).all();
@@ -70,6 +90,7 @@ async function debugStatus(env) {
     status.schema.ok = requiredTables.every(table => status.schema.tables[table]);
     if (!status.schema.ok) {
       status.schema.error = `missing tables: ${requiredTables.filter(table => !status.schema.tables[table]).join(', ')}`;
+      if (status.schema.bootstrap_error) status.schema.error += `; bootstrap failed: ${status.schema.bootstrap_error}`;
       status.ai.blocked_reason = classifyAIBlocker(status.ai, false);
       return status;
     }

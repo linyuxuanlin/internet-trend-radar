@@ -120,17 +120,23 @@ INSERT OR IGNORE INTO sources(id,name,region,kind) VALUES
 ('xiaohongshu','小红书','cn','external-bridge');
 `;
 
-let schemaPromise = null;
+// A Worker isolate can observe more than one DB mock/binding over its lifetime in tests,
+// previews, or multi-environment reuse. Cache per D1 binding rather than globally so a
+// successful bootstrap for one binding can never suppress schema initialization for another.
+const schemaPromises = new WeakMap();
 
 export async function ensureSchema(env) {
   if (!env.DB) return { ok: false, reason: 'missing-db' };
-  if (!schemaPromise) {
-    schemaPromise = env.DB.exec(SCHEMA_SQL)
+  const db = env.DB;
+  let promise = schemaPromises.get(db);
+  if (!promise) {
+    promise = db.exec(SCHEMA_SQL)
       .then(result => ({ ok: true, result }))
       .catch(error => {
-        schemaPromise = null;
+        schemaPromises.delete(db);
         throw error;
       });
+    schemaPromises.set(db, promise);
   }
-  return schemaPromise;
+  return promise;
 }
