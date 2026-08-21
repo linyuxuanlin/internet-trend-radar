@@ -7,9 +7,10 @@ const NOW = new Date();
 const nowIso = NOW.toISOString();
 
 // Only keep aggregator-backed sources that still lack an independent direct collector.
-// Bilibili, Baidu, Toutiao and Juejin are enriched later from their direct sources.
+// Hupu is intentionally excluded because scripts/enrich-hupu.mjs provides the required
+// official-page collector later in both CI and Pages builds.
 const DAILYHOT_SOURCES = [
-  ['weibo', '微博'], ['zhihu', '知乎'], ['douyin', '抖音'], ['hupu', '虎扑']
+  ['weibo', '微博'], ['zhihu', '知乎'], ['douyin', '抖音']
 ];
 
 function clamp(n, min = 0, max = 100) {
