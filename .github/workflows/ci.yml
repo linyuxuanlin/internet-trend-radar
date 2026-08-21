@@ -22,6 +22,9 @@ jobs:
           PY
           node --check /tmp/frontend.js
 
+      - name: Validate worker diagnostics
+        run: node scripts/validate-worker-diagnostics.mjs
+
       - name: Validate Pages patch
         run: |
           cp public/index.html /tmp/index.html
