@@ -2,7 +2,8 @@ import { readFile, writeFile } from 'node:fs/promises';
 
 const dashboardPath = new URL('../public/data/dashboard.json', import.meta.url);
 const productionSourceUrl = 'https://internet-trend-radar.linyuxuanlin.workers.dev/api/dashboard';
-const sourceUrls = [...new Set([process.env.AI_SOURCE_URL, productionSourceUrl].filter(Boolean))];
+const pagesSourceUrl = 'https://linyuxuanlin.github.io/internet-trend-radar/data/dashboard.json';
+const sourceUrls = [...new Set([process.env.AI_SOURCE_URL, productionSourceUrl, pagesSourceUrl].filter(Boolean))];
 const minMatches = Math.max(0, Number(process.env.MIN_AI_MATCHES || 0));
 const maxAgeMs = Math.max(1, Number(process.env.MAX_AI_AGE_HOURS || 12)) * 60 * 60 * 1000;
 const timeoutMs = Math.max(1000, Number(process.env.AI_FETCH_TIMEOUT_MS || 15000));
@@ -73,7 +74,7 @@ if (source) {
     const ai = byTitle.get(normalizeTitle(topic.canonical_title));
     if (!ai) return topic;
     matchedCount++;
-    return { ...topic, ai_summary: ai.ai_summary, ai_why_now: ai.ai_why_now, ai_risks: ai.ai_risks || '', ai_updated_at: ai.ai_updated_at, opportunities: ai.opportunities.slice(0, 3), ai_provenance: { provider: 'cloudflare-workers-ai', source: 'worker-dashboard', source_url: sourceUrlUsed, verified_non_heuristic: true, source_generated_at: source.generatedAt || null } };
+    return { ...topic, ai_summary: ai.ai_summary, ai_why_now: ai.ai_why_now, ai_risks: ai.ai_risks || '', ai_updated_at: ai.ai_updated_at, opportunities: ai.opportunities.slice(0, 3), ai_provenance: { provider: 'cloudflare-workers-ai', source: sourceUrlUsed === pagesSourceUrl ? 'pages-last-known-good' : 'worker-dashboard', source_url: sourceUrlUsed, verified_non_heuristic: true, source_generated_at: source.generatedAt || null } };
   });
 }
 
