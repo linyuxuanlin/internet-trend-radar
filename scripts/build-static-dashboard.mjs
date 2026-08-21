@@ -4,6 +4,7 @@ import { categoryFor, fingerprintTitle, scoreItem, topicStatus } from '../src/ut
 const OUT = new URL('../public/data/dashboard.json', import.meta.url);
 const NOW = new Date();
 const nowIso = NOW.toISOString();
+const GITHUB_API_TOKEN = String(process.env.GITHUB_API_TOKEN || '').trim();
 
 // These sources still lack independent direct collectors. Their shared DailyHot
 // upstream has repeatedly failed DNS resolution in GitHub Actions. Do not spend
@@ -138,9 +139,9 @@ async function collectHackerNews() {
 async function collectGitHub() {
   const since = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
   const q = encodeURIComponent(`created:>=${since}`);
-  const body = await fetchJson(`https://api.github.com/search/repositories?q=${q}&sort=stars&order=desc&per_page=20`, {
-    headers: { 'x-github-api-version': '2022-11-28' }
-  });
+  const headers = { 'x-github-api-version': '2022-11-28' };
+  if (GITHUB_API_TOKEN) headers.authorization = `Bearer ${GITHUB_API_TOKEN}`;
+  const body = await fetchJson(`https://api.github.com/search/repositories?q=${q}&sort=stars&order=desc&per_page=20`, { headers });
   const list = Array.isArray(body?.items) ? body.items : [];
   const topics = list.map((repo, i) => makeTopic({
     sourceId: 'github',
