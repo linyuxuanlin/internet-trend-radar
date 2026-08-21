@@ -35,27 +35,40 @@ function tagValue(block, tag) {
   return match ? decodeXml(match[1]).trim() : '';
 }
 
+function linkValue(block) {
+  const text = stripHtml(tagValue(block, 'link'));
+  if (text) return text;
+  const href = block.match(/<link\b[^>]*\bhref=["']([^"']+)["'][^>]*>/i);
+  return href ? decodeXml(href[1]).trim() : '';
+}
+
 function parseFeed(xml) {
   const text = String(xml);
   const items = text.match(/<item(?:\s[^>]*)?>[\s\S]*?<\/item>/gi) || [];
   const entries = items.length ? [] : (text.match(/<entry(?:\s[^>]*)?>[\s\S]*?<\/entry>/gi) || []);
   return [...items, ...entries].map(block => ({
     title: stripHtml(tagValue(block, 'title')),
+    link: linkValue(block),
     published: stripHtml(tagValue(block, 'pubDate') || tagValue(block, 'published') || tagValue(block, 'updated'))
   })).filter(row => row.title);
 }
 
-async function fetchFeed(url) {
+async function fetchText(url, accept = 'text/html, */*;q=0.5') {
   const response = await fetch(url, {
     redirect: 'follow',
     headers: {
-      accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*;q=0.5',
-      'user-agent': 'Mozilla/5.0 trend-radar-rss-freshness/1.0'
+      accept,
+      'user-agent': 'Mozilla/5.0 trend-radar-rss-freshness/1.1',
+      referer: url.includes('36kr.com') ? 'https://www.36kr.com/rss-center' : undefined
     },
     signal: AbortSignal.timeout(15000)
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.text();
+}
+
+async function fetchFeed(url) {
+  return fetchText(url, 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*;q=0.5');
 }
 
 function freshTimestamp(value) {
@@ -64,6 +77,55 @@ function freshTimestamp(value) {
   const ageMs = Date.now() - timestamp;
   if (ageMs < -FUTURE_SKEW_MS || ageMs > MAX_ITEM_AGE_MS) return null;
   return timestamp;
+}
+
+function timestampFrom36KrPage(html) {
+  const text = String(html);
+  const isoPatterns = [
+    /["']datePublished["']\s*:\s*["']([^"']+)["']/i,
+    /property=["']article:published_time["'][^>]*content=["']([^"']+)["']/i,
+    /name=["']article:published_time["'][^>]*content=["']([^"']+)["']/i
+  ];
+  for (const pattern of isoPatterns) {
+    const match = text.match(pattern);
+    const timestamp = match ? freshTimestamp(match[1]) : null;
+    if (timestamp !== null) return timestamp;
+  }
+
+  const epochMatch = text.match(/["'](?:publishTime|publish_time|publishedAt)["']\s*:\s*(\d{10,13})/i);
+  if (epochMatch) {
+    const raw = Number(epochMatch[1]);
+    const timestamp = raw < 1e12 ? raw * 1000 : raw;
+    const ageMs = Date.now() - timestamp;
+    if (Number.isFinite(timestamp) && ageMs >= -FUTURE_SKEW_MS && ageMs <= MAX_ITEM_AGE_MS) return timestamp;
+  }
+  return null;
+}
+
+async function resolve36KrPageTimestamps(rows, errors) {
+  const candidates = rows.filter(row => {
+    try {
+      const url = new URL(row.link);
+      return url.protocol === 'https:' && (url.hostname === '36kr.com' || url.hostname.endsWith('.36kr.com'));
+    } catch {
+      return false;
+    }
+  }).slice(0, 12);
+
+  const results = await Promise.allSettled(candidates.map(async row => {
+    const html = await fetchText(row.link);
+    return { row, timestamp: timestampFrom36KrPage(html) };
+  }));
+
+  const resolved = [];
+  for (const result of results) {
+    if (result.status === 'rejected') {
+      errors.push(`article-page: ${String(result.reason?.message || result.reason)}`);
+      continue;
+    }
+    if (result.value.timestamp !== null) resolved.push(result.value);
+  }
+  return resolved;
 }
 
 let failed = false;
@@ -78,6 +140,12 @@ for (const source of SOURCES) {
       for (const row of rows) {
         const timestamp = freshTimestamp(row.published);
         if (timestamp !== null) fresh.set(`${row.title}\n${timestamp}`, timestamp);
+      }
+
+      if (source.id === '36kr' && fresh.size < MIN_FRESH_ITEMS) {
+        for (const { row, timestamp } of await resolve36KrPageTimestamps(rows, errors)) {
+          fresh.set(`${row.title}\n${timestamp}`, timestamp);
+        }
       }
       if (fresh.size >= MIN_FRESH_ITEMS) break;
     } catch (error) {
