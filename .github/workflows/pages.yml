@@ -41,6 +41,7 @@ jobs:
           REQUIRE_BAIDU=1 node scripts/enrich-baidu.mjs
           REQUIRE_TOUTIAO=1 node scripts/enrich-toutiao.mjs
           REQUIRE_HUPU=1 node scripts/enrich-hupu.mjs
+          node scripts/probe-degraded-sources.mjs
           BUILD_SHA="$GITHUB_SHA" node scripts/stamp-build-provenance.mjs
           node scripts/write-health-manifest.mjs
 
