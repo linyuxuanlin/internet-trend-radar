@@ -1,6 +1,7 @@
 import { routeApi } from './api.js';
 import { collectAll } from './collector.js';
 import { sendDailyDigest } from './email.js';
+import { ensureSchema } from './schema.js';
 
 async function ensureInitialData(env) {
   if (!env.DB) return { ok: false, reason: 'missing-db' };
@@ -65,6 +66,20 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    if (url.pathname.startsWith('/api/') && env.DB) {
+      try {
+        await ensureSchema(env);
+      } catch (err) {
+        console.error('D1 schema initialization failed', err);
+        return Response.json({
+          ok: false,
+          ready: false,
+          error: `D1 schema initialization failed: ${String(err?.message || err)}`,
+          generatedAt: new Date().toISOString()
+        }, { status: 503 });
+      }
+    }
+
     if (url.pathname === '/api/debug') {
       return Response.json(await debugStatus(env));
     }
@@ -91,10 +106,13 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
-    if (controller.cron === '5 0 * * *') {
-      ctx.waitUntil(sendDailyDigest(env).catch(err => console.error('daily digest failed', err)));
-      return;
-    }
-    ctx.waitUntil(collectAll(env).catch(err => console.error('collection failed', err)));
+    ctx.waitUntil((async () => {
+      await ensureSchema(env);
+      if (controller.cron === '5 0 * * *') {
+        await sendDailyDigest(env);
+        return;
+      }
+      await collectAll(env);
+    })().catch(err => console.error('scheduled job failed', err)));
   }
 };
