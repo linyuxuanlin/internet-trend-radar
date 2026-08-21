@@ -16,6 +16,7 @@ assert(missingBinding.body.schema?.error === 'missing DB binding', 'missing DB s
 assert(missingBinding.body.ai?.binding === false, 'missing AI binding must be reported');
 
 const missingTablesDB = {
+  async exec() { throw new Error('mock schema bootstrap failure'); },
   prepare(sql) {
     if (!sql.includes('sqlite_master')) throw new Error(`unexpected query before schema readiness: ${sql}`);
     return {
@@ -27,8 +28,12 @@ const missingTablesDB = {
 const missingTables = await parse(await worker.fetch(new Request('https://example.test/api/debug'), { DB: missingTablesDB }));
 assert(missingTables.status === 200, `missing tables debug status=${missingTables.status}`);
 assert(missingTables.body.db === true, 'DB binding should be visible');
+assert(missingTables.body.schema?.bootstrap_attempted === true, 'debug must attempt idempotent schema bootstrap');
+assert(missingTables.body.schema?.bootstrap_ok === false, 'failed schema bootstrap must be reported without taking debug down');
+assert(String(missingTables.body.schema?.bootstrap_error || '').includes('mock schema bootstrap failure'), 'bootstrap error must retain the real failure');
 assert(missingTables.body.schema?.ok === false, 'partial schema must not report healthy');
 assert(String(missingTables.body.schema?.error || '').includes('missing tables:'), 'missing tables must be named');
+assert(String(missingTables.body.schema?.error || '').includes('bootstrap failed:'), 'schema error must include bootstrap failure context');
 assert(missingTables.body.schema.tables.sources === true, 'present table should be reported true');
 assert(missingTables.body.schema.tables.raw_items === false, 'missing table should be reported false');
 
@@ -36,6 +41,7 @@ const health = await parse(await worker.fetch(new Request('https://example.test/
 assert(health.status === 200 && health.body.ok === true, 'health must remain reachable without D1');
 
 const aiDebugDB = {
+  async exec() { return { count: 1 }; },
   prepare(sql) {
     if (sql.includes('sqlite_master')) {
       return {
@@ -63,6 +69,7 @@ const aiDebug = await parse(await worker.fetch(new Request('https://example.test
   AI_MODEL: '@cf/test/model'
 }));
 assert(aiDebug.status === 200, `AI debug status=${aiDebug.status}`);
+assert(aiDebug.body.schema?.bootstrap_ok === true, 'healthy debug schema bootstrap must succeed');
 assert(aiDebug.body.ready === true, 'AI debug fixture must remain real-data ready');
 assert(aiDebug.body.ai?.binding === true, 'AI binding presence must be reported');
 assert(aiDebug.body.ai?.model === '@cf/test/model', 'configured AI model must be reported');
@@ -158,4 +165,4 @@ try {
   globalThis.fetch = originalFetch;
 }
 
-console.log('Worker D1 bootstrap, AI readiness diagnostics, and truthful real-dashboard fallback validated');
+console.log('Worker D1 bootstrap, debug self-healing, AI readiness diagnostics, and truthful real-dashboard fallback validated');
