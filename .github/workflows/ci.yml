@@ -39,10 +39,11 @@ jobs:
           mv /tmp/index.html public/index.html
 
       - name: Real-data smoke test
-        timeout-minutes: 5
+        timeout-minutes: 6
         env:
           REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu,ithome,solidot
           GITHUB_API_TOKEN: ${{ github.token }}
+          AI_SOURCE_URL: https://feat-pages-ai-opportunity-overlay-internet-trend-radar.linyuxuanlin.workers.dev/api/dashboard
         run: |
           node scripts/validate-rss-source-freshness.mjs
           node scripts/build-static-dashboard.mjs
@@ -55,6 +56,7 @@ jobs:
           REQUIRE_ITHOME=1 node scripts/enrich-ithome.mjs
           REQUIRE_SOLIDOT=1 node scripts/enrich-solidot.mjs
           node scripts/probe-degraded-sources.mjs
+          node scripts/enrich-ai-opportunities.mjs
           BUILD_SHA="$GITHUB_SHA" node scripts/stamp-build-provenance.mjs
           node scripts/write-health-manifest.mjs
           MIN_HEALTHY_SOURCES=12 MIN_DIRECT_CN_SOURCES=10 node scripts/validate-real-dashboard.mjs

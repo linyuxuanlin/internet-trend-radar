@@ -45,6 +45,7 @@ jobs:
           REQUIRE_ITHOME=1 node scripts/enrich-ithome.mjs
           REQUIRE_SOLIDOT=1 node scripts/enrich-solidot.mjs
           node scripts/probe-degraded-sources.mjs
+          node scripts/enrich-ai-opportunities.mjs
           BUILD_SHA="$GITHUB_SHA" node scripts/stamp-build-provenance.mjs
           node scripts/write-health-manifest.mjs
 
