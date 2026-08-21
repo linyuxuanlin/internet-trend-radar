@@ -23,7 +23,9 @@ jobs:
           node --check /tmp/frontend.js
 
       - name: Validate worker diagnostics
-        run: node scripts/validate-worker-diagnostics.mjs
+        run: |
+          node scripts/validate-worker-diagnostics.mjs
+          node scripts/validate-ai-blocked-reasons.mjs
 
       - name: Validate Pages patch
         run: |
