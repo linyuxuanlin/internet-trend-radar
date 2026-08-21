@@ -5,6 +5,7 @@ const DASHBOARD_URL = String(process.env.DASHBOARD_URL || '').trim();
 const FETCH_TIMEOUT_MS = Number(process.env.DASHBOARD_FETCH_TIMEOUT_MS || 15 * 1000);
 const MAX_AGE_MS = Number(process.env.MAX_SNAPSHOT_AGE_MS || 10 * 60 * 1000);
 const FUTURE_SKEW_MS = Number(process.env.MAX_FUTURE_SKEW_MS || 5 * 60 * 1000);
+const MAX_FEED_ITEM_AGE_MS = Number(process.env.MAX_FEED_ITEM_AGE_MS || 7 * 24 * 60 * 60 * 1000);
 const MIN_HEALTHY_SOURCES = Number(process.env.MIN_HEALTHY_SOURCES || 4);
 const MIN_DIRECT_CN_SOURCES = Number(process.env.MIN_DIRECT_CN_SOURCES || 3);
 const MIN_TOPICS_PER_REQUIRED_DIRECT = Number(process.env.MIN_TOPICS_PER_REQUIRED_DIRECT || 5);
@@ -12,6 +13,10 @@ const REQUIRED_DIRECT_CN = String(process.env.REQUIRED_DIRECT_CN || 'v2ex,sspai,
   .split(',')
   .map(x => x.trim())
   .filter(Boolean);
+const FEED_FRESHNESS_SOURCES = new Set(String(process.env.FEED_FRESHNESS_SOURCES || 'ithome,solidot')
+  .split(',')
+  .map(x => x.trim())
+  .filter(Boolean));
 
 const OFFICIAL_HOSTS = {
   v2ex: ['v2ex.com'],
@@ -130,6 +135,7 @@ for (const required of REQUIRED_DIRECT_CN) {
   const distinctTopicIds = new Set(refs.map(({ topic }) => String(topic?.id || topic?.fingerprint || topic?.canonical_title || '')));
   const expectedCount = Number(source?.last_item_count || 0);
   const externalIds = new Set();
+  const publishedTimes = [];
 
   if (refs.length < MIN_TOPICS_PER_REQUIRED_DIRECT) {
     fail(`required direct source ${required} has too few topic references: ${refs.length} < ${MIN_TOPICS_PER_REQUIRED_DIRECT}`);
@@ -187,6 +193,25 @@ for (const required of REQUIRED_DIRECT_CN) {
         fail(`required direct source ${required} captured_at is stale: ${ref?.captured_at}`);
       }
     }
+
+    if (FEED_FRESHNESS_SOURCES.has(required)) {
+      const publishedAt = Date.parse(ref?.published_at);
+      if (!Number.isFinite(publishedAt)) {
+        fail(`required feed source ${required} has invalid published_at: ${ref?.published_at}`);
+      } else {
+        publishedTimes.push(publishedAt);
+        const publishedAgeMs = Date.now() - publishedAt;
+        if (publishedAgeMs < -FUTURE_SKEW_MS) {
+          fail(`required feed source ${required} published_at is too far in the future: ${ref?.published_at}`);
+        } else if (publishedAgeMs > MAX_FEED_ITEM_AGE_MS) {
+          fail(`required feed source ${required} item is stale: ${ref?.published_at} ageMs=${publishedAgeMs} maxAgeMs=${MAX_FEED_ITEM_AGE_MS}`);
+        }
+      }
+    }
+  }
+
+  if (FEED_FRESHNESS_SOURCES.has(required) && publishedTimes.length !== refs.length) {
+    fail(`required feed source ${required} publication timestamp coverage mismatch: published=${publishedTimes.length} refs=${refs.length}`);
   }
 }
 
@@ -197,13 +222,23 @@ if (!process.exitCode) {
     topics: topics.length,
     healthySources: healthy.length,
     directCn: directCn.map(source => source.id),
-    requiredDirect: REQUIRED_DIRECT_CN.map(id => ({
-      id,
-      topicRefs: (topicRefsBySource.get(id) || []).length,
-      uniqueExternalIds: new Set((topicRefsBySource.get(id) || []).map(({ ref }) => String(ref?.external_id || '').trim()).filter(Boolean)).size,
-      officialHosts: OFFICIAL_HOSTS[id] || []
-    })),
+    requiredDirect: REQUIRED_DIRECT_CN.map(id => {
+      const refs = topicRefsBySource.get(id) || [];
+      const published = refs.map(({ ref }) => Date.parse(ref?.published_at)).filter(Number.isFinite);
+      return {
+        id,
+        topicRefs: refs.length,
+        uniqueExternalIds: new Set(refs.map(({ ref }) => String(ref?.external_id || '').trim()).filter(Boolean)).size,
+        officialHosts: OFFICIAL_HOSTS[id] || [],
+        ...(FEED_FRESHNESS_SOURCES.has(id) ? {
+          publishedAtCoverage: published.length,
+          newestPublishedAt: published.length ? new Date(Math.max(...published)).toISOString() : null,
+          oldestPublishedAt: published.length ? new Date(Math.min(...published)).toISOString() : null
+        } : {})
+      };
+    }),
     generatedAt: dashboard.generatedAt,
-    ageSeconds: Math.round(ageMs / 1000)
+    ageSeconds: Math.round(ageMs / 1000),
+    maxFeedItemAgeSeconds: Math.round(MAX_FEED_ITEM_AGE_MS / 1000)
   }));
 }

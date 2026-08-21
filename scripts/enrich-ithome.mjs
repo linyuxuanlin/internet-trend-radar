@@ -4,6 +4,9 @@ import { categoryFor, fingerprintTitle, scoreItem, topicStatus } from '../src/ut
 const DASHBOARD = new URL('../public/data/dashboard.json', import.meta.url);
 const FEED = 'https://www.ithome.com/rss/';
 const nowIso = new Date().toISOString();
+const MAX_FEED_ITEM_AGE_MS = Number(process.env.MAX_FEED_ITEM_AGE_MS || 7 * 24 * 60 * 60 * 1000);
+const MAX_FUTURE_SKEW_MS = Number(process.env.MAX_FUTURE_SKEW_MS || 5 * 60 * 1000);
+const MIN_FRESH_FEED_ITEMS = Number(process.env.MIN_FRESH_FEED_ITEMS || 5);
 
 function clamp(n, min = 0, max = 100) {
   return Math.max(min, Math.min(max, Number.isFinite(Number(n)) ? Number(n) : min));
@@ -13,7 +16,7 @@ async function fetchFeed(timeoutMs = 15000) {
   const response = await fetch(FEED, {
     redirect: 'follow',
     headers: {
-      'user-agent': 'Mozilla/5.0 trend-radar/1.6',
+      'user-agent': 'Mozilla/5.0 trend-radar/1.8',
       accept: 'application/rss+xml, application/xml, text/xml, */*;q=0.5',
       referer: 'https://www.ithome.com/'
     },
@@ -43,15 +46,29 @@ function tagValue(block, tag) {
   return match ? decodeXml(match[1]).trim() : '';
 }
 
+function parsePublishedAt(value) {
+  const timestamp = Date.parse(String(value || '').trim());
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
+}
+
 function parseFeed(xml) {
   const blocks = String(xml).match(/<item(?:\s[^>]*)?>[\s\S]*?<\/item>/gi) || [];
   return blocks.map((block, index) => ({
     title: stripHtml(tagValue(block, 'title')),
     link: stripHtml(tagValue(block, 'link')),
     description: stripHtml(tagValue(block, 'description')),
-    published: stripHtml(tagValue(block, 'pubDate')),
+    published_at: parsePublishedAt(stripHtml(tagValue(block, 'pubDate'))),
     rank: index + 1
   })).filter(row => row.title && row.link);
+}
+
+function freshRows(rows, now = Date.now()) {
+  return rows.filter(row => {
+    const publishedAt = Date.parse(row.published_at);
+    if (!Number.isFinite(publishedAt)) return false;
+    const ageMs = now - publishedAt;
+    return ageMs >= -MAX_FUTURE_SKEW_MS && ageMs <= MAX_FEED_ITEM_AGE_MS;
+  });
 }
 
 function makeTopic(row, total, capturedAt) {
@@ -80,7 +97,8 @@ function makeTopic(row, total, capturedAt) {
       url: row.link,
       title: row.title,
       rank: row.rank,
-      captured_at: capturedAt
+      captured_at: capturedAt,
+      published_at: row.published_at
     }]
   };
 }
@@ -128,8 +146,12 @@ const capturedAt = dashboard.generatedAt || nowIso;
 
 try {
   const xml = await fetchFeed();
-  const rows = parseFeed(xml).slice(0, 20);
-  if (!rows.length) throw new Error(`RSS returned no usable items; prefix=${JSON.stringify(xml.slice(0, 120))}`);
+  const parsedRows = parseFeed(xml);
+  if (!parsedRows.length) throw new Error(`RSS returned no usable items; prefix=${JSON.stringify(xml.slice(0, 120))}`);
+  const rows = freshRows(parsedRows).slice(0, 20);
+  if (rows.length < MIN_FRESH_FEED_ITEMS) {
+    throw new Error(`RSS freshness gate failed: fresh=${rows.length} parsed=${parsedRows.length} min=${MIN_FRESH_FEED_ITEMS} maxAgeMs=${MAX_FEED_ITEM_AGE_MS}`);
+  }
 
   const topics = rows.map(row => makeTopic(row, rows.length, capturedAt));
   dashboard.topics = mergeTopics(dashboard.topics, topics);
@@ -145,7 +167,7 @@ try {
     last_item_count: topics.length
   });
   await writeFile(DASHBOARD, JSON.stringify(dashboard, null, 2) + '\n', 'utf8');
-  console.log(`OK ithome: ${topics.length}; dashboard topics=${dashboard.topics.length}`);
+  console.log(`OK ithome: ${topics.length} fresh RSS items; dashboard topics=${dashboard.topics.length}`);
 } catch (error) {
   const message = String(error?.message || error).slice(0, 300);
   setSource(dashboard, {
