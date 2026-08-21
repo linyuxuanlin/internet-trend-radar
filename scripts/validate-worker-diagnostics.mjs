@@ -34,6 +34,51 @@ assert(missingTables.body.schema.tables.raw_items === false, 'missing table shou
 const health = await parse(await worker.fetch(new Request('https://example.test/api/health'), {}));
 assert(health.status === 200 && health.body.ok === true, 'health must remain reachable without D1');
 
+// A freshly provisioned D1 must be schema-bootstrapped before the dashboard performs
+// its first topics readiness query. This regression test proves the bootstrap order and
+// verifies that a healthy D1 result wins without requiring any synthetic fallback.
+let schemaReady = false;
+let schemaExecCount = 0;
+const freshD1 = {
+  async exec(sql) {
+    assert(sql.includes('CREATE TABLE IF NOT EXISTS topics'), 'schema bootstrap must create topics');
+    schemaReady = true;
+    schemaExecCount++;
+    return { count: 1 };
+  },
+  prepare(sql) {
+    if (sql.includes('SELECT COUNT(*) as count FROM topics')) {
+      assert(schemaReady, 'topics readiness query ran before schema bootstrap');
+      return { async first() { return { count: 1 }; } };
+    }
+    if (sql.includes('SELECT * FROM topics')) {
+      assert(schemaReady, 'dashboard topics query ran before schema bootstrap');
+      return {
+        bind() { return this; },
+        async all() {
+          return { results: [{ id: 'd1-real-1', canonical_title: 'D1 真实趋势', category: '科技', current_score: 81, breakout_score: 70, source_count: 2, ai_opportunities_json: '[]' }] };
+        }
+      };
+    }
+    if (sql.includes('FROM sources ORDER BY')) {
+      return { async all() { return { results: [{ id: 'v2ex', name: 'V2EX', region: 'cn', kind: 'direct', last_success_at: new Date().toISOString(), last_error: null, last_item_count: 20 }] }; } };
+    }
+    if (sql.includes('GROUP BY category')) {
+      return { async all() { return { results: [{ category: '科技', count: 1, avg_score: 81 }] }; } };
+    }
+    if (sql.includes('FROM topic_snapshots')) {
+      return { async all() { return { results: [] }; } };
+    }
+    throw new Error(`unexpected fresh D1 query: ${sql}`);
+  }
+};
+const freshD1Dashboard = await parse(await worker.fetch(new Request('https://example.test/api/dashboard'), { DB: freshD1 }));
+assert(schemaExecCount === 1, `fresh D1 schema bootstrap count=${schemaExecCount}`);
+assert(freshD1Dashboard.status === 200, `fresh D1 dashboard status=${freshD1Dashboard.status}`);
+assert(freshD1Dashboard.body.preview === false && freshD1Dashboard.body.ready === true, 'fresh D1 dashboard must be real-data ready');
+assert(freshD1Dashboard.body.fallback == null, 'healthy D1 dashboard must not use fallback');
+assert(freshD1Dashboard.body.topics?.[0]?.id === 'd1-real-1', 'healthy D1 topic must be returned');
+
 const originalFetch = globalThis.fetch;
 try {
   const realSnapshot = {
@@ -75,4 +120,4 @@ try {
   globalThis.fetch = originalFetch;
 }
 
-console.log('Worker diagnostics and truthful real-dashboard fallback validated');
+console.log('Worker D1 bootstrap, diagnostics, and truthful real-dashboard fallback validated');
