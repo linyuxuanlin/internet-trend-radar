@@ -1,6 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 const DASHBOARD = new URL('../public/data/dashboard.json', import.meta.url);
+const DASHBOARD_URL = String(process.env.DASHBOARD_URL || '').trim();
+const FETCH_TIMEOUT_MS = Number(process.env.DASHBOARD_FETCH_TIMEOUT_MS || 15 * 1000);
 const MAX_AGE_MS = Number(process.env.MAX_SNAPSHOT_AGE_MS || 10 * 60 * 1000);
 const FUTURE_SKEW_MS = Number(process.env.MAX_FUTURE_SKEW_MS || 5 * 60 * 1000);
 const MIN_HEALTHY_SOURCES = Number(process.env.MIN_HEALTHY_SOURCES || 4);
@@ -31,7 +33,52 @@ function hostnameMatches(hostname, allowed) {
   return allowed.some(domain => hostname === domain || hostname.endsWith(`.${domain}`));
 }
 
-const dashboard = JSON.parse(await readFile(DASHBOARD, 'utf8'));
+async function loadDashboard() {
+  if (!DASHBOARD_URL) {
+    return JSON.parse(await readFile(DASHBOARD, 'utf8'));
+  }
+
+  let url;
+  try {
+    url = new URL(DASHBOARD_URL);
+  } catch {
+    throw new Error(`invalid DASHBOARD_URL: ${DASHBOARD_URL}`);
+  }
+
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throw new Error(`DASHBOARD_URL must use http(s): ${url.protocol}`);
+  }
+
+  url.searchParams.set('_radar_check', String(Date.now()));
+  const response = await fetch(url, {
+    cache: 'no-store',
+    headers: {
+      accept: 'application/json',
+      'cache-control': 'no-cache'
+    },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
+  });
+
+  if (!response.ok) {
+    throw new Error(`dashboard fetch failed: HTTP ${response.status} ${response.statusText}`);
+  }
+
+  const body = await response.text();
+  try {
+    return JSON.parse(body);
+  } catch {
+    throw new Error(`dashboard response is not valid JSON (${body.length} bytes)`);
+  }
+}
+
+let dashboard;
+try {
+  dashboard = await loadDashboard();
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+  process.exit();
+}
+
 const topics = Array.isArray(dashboard.topics) ? dashboard.topics : [];
 const sources = Array.isArray(dashboard.sources) ? dashboard.sources : [];
 const healthy = sources.filter(source => source?.last_success_at && Number(source?.last_item_count || 0) > 0);
@@ -144,6 +191,7 @@ for (const required of REQUIRED_DIRECT_CN) {
 if (!process.exitCode) {
   console.log(JSON.stringify({
     ok: true,
+    dashboardLocation: DASHBOARD_URL || DASHBOARD.pathname,
     topics: topics.length,
     healthySources: healthy.length,
     directCn: directCn.map(source => source.id),
