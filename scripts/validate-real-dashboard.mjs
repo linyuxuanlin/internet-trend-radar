@@ -22,7 +22,8 @@ const OFFICIAL_HOSTS = {
   baidu: ['baidu.com'],
   toutiao: ['toutiao.com'],
   hupu: ['hupu.com'],
-  ithome: ['ithome.com']
+  ithome: ['ithome.com'],
+  solidot: ['solidot.org']
 };
 
 function fail(message) {
