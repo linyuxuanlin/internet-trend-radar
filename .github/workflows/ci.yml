@@ -48,7 +48,9 @@ jobs:
           REQUIRE_BAIDU=1 node scripts/enrich-baidu.mjs
           REQUIRE_TOUTIAO=1 node scripts/enrich-toutiao.mjs
           REQUIRE_HUPU=1 node scripts/enrich-hupu.mjs
+          BUILD_SHA="$GITHUB_SHA" node scripts/stamp-build-provenance.mjs
           MIN_HEALTHY_SOURCES=10 MIN_DIRECT_CN_SOURCES=8 REQUIRED_DIRECT_CN=v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu node scripts/validate-real-dashboard.mjs
+          EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-build-provenance.mjs
 
       - name: Smoke-test remote dashboard validation
         timeout-minutes: 1
@@ -63,3 +65,4 @@ jobs:
             sleep 1
           done
           DASHBOARD_URL=http://127.0.0.1:4173/data/dashboard.json MIN_HEALTHY_SOURCES=10 MIN_DIRECT_CN_SOURCES=8 REQUIRED_DIRECT_CN=v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu node scripts/validate-real-dashboard.mjs
+          DASHBOARD_URL=http://127.0.0.1:4173/data/dashboard.json EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-build-provenance.mjs
