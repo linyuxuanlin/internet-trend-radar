@@ -18,6 +18,16 @@ async function ensureInitialData(env) {
   }
 }
 
+function classifyAIBlocker(ai, schemaOk = true) {
+  if (!schemaOk) return 'd1-schema-incomplete';
+  if (!ai.binding) return 'missing-ai-binding';
+  if (ai.eligible_topics === 0) return 'no-eligible-topics';
+  if ((ai.pending_topics || 0) === 0) return null;
+  if ((ai.attempted_topics || 0) === 0) return 'inference-not-run';
+  if ((ai.verified_topics || 0) === 0) return 'outputs-failed-quality-gate';
+  return 'partial-ai-coverage';
+}
+
 async function debugStatus(env) {
   const status = {
     db: Boolean(env.DB),
@@ -26,10 +36,13 @@ async function debugStatus(env) {
       binding: Boolean(env.AI),
       model: env.AI_MODEL || '@cf/zai-org/glm-4.7-flash',
       eligible_topics: null,
+      attempted_topics: null,
       verified_topics: null,
       pending_topics: null,
       stale_topics: null,
-      last_updated_at: null
+      last_updated_at: null,
+      ready_for_inference: false,
+      blocked_reason: null
     },
     ready: false,
     raw_items: null,
@@ -45,6 +58,7 @@ async function debugStatus(env) {
   if (!env.DB) {
     status.error = 'missing DB binding';
     status.schema.error = 'missing DB binding';
+    status.ai.blocked_reason = env.AI ? 'missing-db-binding' : 'missing-ai-and-db-binding';
     return status;
   }
 
@@ -56,16 +70,18 @@ async function debugStatus(env) {
     status.schema.ok = requiredTables.every(table => status.schema.tables[table]);
     if (!status.schema.ok) {
       status.schema.error = `missing tables: ${requiredTables.filter(table => !status.schema.tables[table]).join(', ')}`;
+      status.ai.blocked_reason = classifyAIBlocker(status.ai, false);
       return status;
     }
   } catch (err) {
     status.schema.error = String(err?.message || err);
     status.error = `schema probe failed: ${status.schema.error}`;
+    status.ai.blocked_reason = 'd1-schema-probe-failed';
     return status;
   }
 
   try {
-    const [raw, topics, sources, healthy, failed, lastSuccess, errors, aiEligible, aiVerified, aiStale, aiLastUpdated] = await Promise.all([
+    const [raw, topics, sources, healthy, failed, lastSuccess, errors, aiEligible, aiAttempted, aiVerified, aiStale, aiLastUpdated] = await Promise.all([
       env.DB.prepare('SELECT COUNT(*) as count FROM raw_items').first(),
       env.DB.prepare('SELECT COUNT(*) as count FROM topics').first(),
       env.DB.prepare('SELECT COUNT(*) as count FROM sources').first(),
@@ -74,6 +90,7 @@ async function debugStatus(env) {
       env.DB.prepare('SELECT MAX(last_success_at) as value FROM sources').first(),
       env.DB.prepare(`SELECT id,last_error,last_error_at FROM sources WHERE last_error IS NOT NULL ORDER BY last_error_at DESC LIMIT 6`).all(),
       env.DB.prepare(`SELECT COUNT(*) as count FROM topics WHERE current_score >= 45`).first(),
+      env.DB.prepare(`SELECT COUNT(*) as count FROM topics WHERE current_score >= 45 AND ai_updated_at IS NOT NULL`).first(),
       env.DB.prepare(`SELECT COUNT(*) as count FROM topics
         WHERE current_score >= 45
           AND ai_updated_at IS NOT NULL
@@ -96,13 +113,17 @@ async function debugStatus(env) {
     status.last_success_at = lastSuccess?.value || null;
     status.recent_errors = errors?.results || [];
     status.ai.eligible_topics = Number(aiEligible?.count || 0);
+    status.ai.attempted_topics = Number(aiAttempted?.count || 0);
     status.ai.verified_topics = Number(aiVerified?.count || 0);
     status.ai.pending_topics = Math.max(0, status.ai.eligible_topics - status.ai.verified_topics);
     status.ai.stale_topics = Number(aiStale?.count || 0);
     status.ai.last_updated_at = aiLastUpdated?.value || null;
+    status.ai.ready_for_inference = status.ai.binding && status.ai.eligible_topics > 0 && status.ai.pending_topics > 0;
+    status.ai.blocked_reason = classifyAIBlocker(status.ai, true);
     status.ready = status.raw_items > 0 && status.topics > 0 && status.healthy_sources > 0;
   } catch (err) {
     status.error = String(err?.message || err);
+    status.ai.blocked_reason = 'ai-readiness-query-failed';
   }
   return status;
 }
