@@ -39,9 +39,12 @@ jobs:
           REQUIRE_BAIDU=1 node scripts/enrich-baidu.mjs
           REQUIRE_TOUTIAO=1 node scripts/enrich-toutiao.mjs
           REQUIRE_HUPU=1 node scripts/enrich-hupu.mjs
+          BUILD_SHA="$GITHUB_SHA" node scripts/stamp-build-provenance.mjs
 
       - name: Verify production real-data gate
-        run: MIN_HEALTHY_SOURCES=10 MIN_DIRECT_CN_SOURCES=8 REQUIRED_DIRECT_CN=v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu node scripts/validate-real-dashboard.mjs
+        run: |
+          MIN_HEALTHY_SOURCES=10 MIN_DIRECT_CN_SOURCES=8 REQUIRED_DIRECT_CN=v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu node scripts/validate-real-dashboard.mjs
+          EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-build-provenance.mjs
 
       - name: Patch Pages frontend fallback
         run: node scripts/patch-pages-index.mjs
@@ -70,15 +73,16 @@ jobs:
           MIN_HEALTHY_SOURCES: '10'
           MIN_DIRECT_CN_SOURCES: '8'
           REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu
+          EXPECTED_BUILD_SHA: ${{ github.sha }}
         run: |
           for attempt in 1 2 3 4 5 6; do
             echo "Live snapshot verification attempt ${attempt}/6: ${DASHBOARD_URL}"
-            if node scripts/validate-real-dashboard.mjs; then
+            if node scripts/validate-real-dashboard.mjs && node scripts/validate-build-provenance.mjs; then
               exit 0
             fi
             if [ "$attempt" -lt 6 ]; then
               sleep 10
             fi
           done
-          echo "Published Pages dashboard never passed the real-data gate" >&2
+          echo "Published Pages dashboard never passed the real-data and commit-provenance gates" >&2
           exit 1
