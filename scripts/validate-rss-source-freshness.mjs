@@ -3,9 +3,10 @@ const FUTURE_SKEW_MS = Number(process.env.MAX_FUTURE_SKEW_MS || 5 * 60 * 1000);
 const MIN_FRESH_ITEMS = Number(process.env.MIN_FRESH_RSS_ITEMS || 5);
 
 const SOURCES = [
-  { id: 'sspai', feeds: ['https://sspai.com/feed'] },
+  { id: 'sspai', mode: 'item', feeds: ['https://sspai.com/feed'] },
   {
     id: '36kr',
+    mode: 'feed',
     feeds: [
       'https://36kr.com/feed',
       'https://36kr.com/feed-article',
@@ -35,40 +36,33 @@ function tagValue(block, tag) {
   return match ? decodeXml(match[1]).trim() : '';
 }
 
-function linkValue(block) {
-  const text = stripHtml(tagValue(block, 'link'));
-  if (text) return text;
-  const href = block.match(/<link\b[^>]*\bhref=["']([^"']+)["'][^>]*>/i);
-  return href ? decodeXml(href[1]).trim() : '';
-}
-
 function parseFeed(xml) {
   const text = String(xml);
   const items = text.match(/<item(?:\s[^>]*)?>[\s\S]*?<\/item>/gi) || [];
   const entries = items.length ? [] : (text.match(/<entry(?:\s[^>]*)?>[\s\S]*?<\/entry>/gi) || []);
   return [...items, ...entries].map(block => ({
     title: stripHtml(tagValue(block, 'title')),
-    link: linkValue(block),
     published: stripHtml(tagValue(block, 'pubDate') || tagValue(block, 'published') || tagValue(block, 'updated'))
   })).filter(row => row.title);
 }
 
-async function fetchText(url, accept = 'text/html, */*;q=0.5') {
+function feedTimestamp(xml) {
+  const value = stripHtml(tagValue(xml, 'lastBuildDate') || tagValue(xml, 'pubDate') || tagValue(xml, 'updated'));
+  return freshTimestamp(value);
+}
+
+async function fetchFeed(url) {
   const response = await fetch(url, {
     redirect: 'follow',
     headers: {
-      accept,
-      'user-agent': 'Mozilla/5.0 trend-radar-rss-freshness/1.1',
+      accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*;q=0.5',
+      'user-agent': 'Mozilla/5.0 trend-radar-rss-freshness/1.2',
       referer: url.includes('36kr.com') ? 'https://www.36kr.com/rss-center' : undefined
     },
     signal: AbortSignal.timeout(15000)
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.text();
-}
-
-async function fetchFeed(url) {
-  return fetchText(url, 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*;q=0.5');
 }
 
 function freshTimestamp(value) {
@@ -79,99 +73,69 @@ function freshTimestamp(value) {
   return timestamp;
 }
 
-function timestampFrom36KrPage(html) {
-  const text = String(html);
-  const isoPatterns = [
-    /["']datePublished["']\s*:\s*["']([^"']+)["']/i,
-    /property=["']article:published_time["'][^>]*content=["']([^"']+)["']/i,
-    /name=["']article:published_time["'][^>]*content=["']([^"']+)["']/i
-  ];
-  for (const pattern of isoPatterns) {
-    const match = text.match(pattern);
-    const timestamp = match ? freshTimestamp(match[1]) : null;
-    if (timestamp !== null) return timestamp;
-  }
-
-  const epochMatch = text.match(/["'](?:publishTime|publish_time|publishedAt)["']\s*:\s*(\d{10,13})/i);
-  if (epochMatch) {
-    const raw = Number(epochMatch[1]);
-    const timestamp = raw < 1e12 ? raw * 1000 : raw;
-    const ageMs = Date.now() - timestamp;
-    if (Number.isFinite(timestamp) && ageMs >= -FUTURE_SKEW_MS && ageMs <= MAX_ITEM_AGE_MS) return timestamp;
-  }
-  return null;
-}
-
-async function resolve36KrPageTimestamps(rows, errors) {
-  const candidates = rows.filter(row => {
-    try {
-      const url = new URL(row.link);
-      return url.protocol === 'https:' && (url.hostname === '36kr.com' || url.hostname.endsWith('.36kr.com'));
-    } catch {
-      return false;
-    }
-  }).slice(0, 12);
-
-  const results = await Promise.allSettled(candidates.map(async row => {
-    const html = await fetchText(row.link);
-    return { row, timestamp: timestampFrom36KrPage(html) };
-  }));
-
-  const resolved = [];
-  for (const result of results) {
-    if (result.status === 'rejected') {
-      errors.push(`article-page: ${String(result.reason?.message || result.reason)}`);
-      continue;
-    }
-    if (result.value.timestamp !== null) resolved.push(result.value);
-  }
-  return resolved;
-}
-
 let failed = false;
 const results = [];
 
 for (const source of SOURCES) {
-  const fresh = new Map();
   const errors = [];
+  let result = null;
+
   for (const url of source.feeds) {
     try {
-      const rows = parseFeed(await fetchFeed(url));
-      for (const row of rows) {
-        const timestamp = freshTimestamp(row.published);
-        if (timestamp !== null) fresh.set(`${row.title}\n${timestamp}`, timestamp);
+      const xml = await fetchFeed(url);
+      const rows = parseFeed(xml);
+
+      if (source.mode === 'item') {
+        const timestamps = rows.map(row => freshTimestamp(row.published)).filter(Number.isFinite);
+        if (timestamps.length >= MIN_FRESH_ITEMS) {
+          result = {
+            id: source.id,
+            mode: 'item-level',
+            feedUrl: url,
+            feedItems: rows.length,
+            freshItems: timestamps.length,
+            newestPublishedAt: new Date(Math.max(...timestamps)).toISOString(),
+            oldestFreshPublishedAt: new Date(Math.min(...timestamps)).toISOString(),
+            errors
+          };
+          break;
+        }
+        errors.push(`${url}: fresh item timestamps ${timestamps.length} < ${MIN_FRESH_ITEMS}`);
+        continue;
       }
 
-      if (source.id === '36kr' && fresh.size < MIN_FRESH_ITEMS) {
-        for (const { row, timestamp } of await resolve36KrPageTimestamps(rows, errors)) {
-          fresh.set(`${row.title}\n${timestamp}`, timestamp);
-        }
+      const builtAt = feedTimestamp(xml);
+      if (rows.length >= MIN_FRESH_ITEMS && builtAt !== null) {
+        result = {
+          id: source.id,
+          mode: 'feed-level',
+          feedUrl: url,
+          feedItems: rows.length,
+          freshItems: null,
+          feedPublishedAt: new Date(builtAt).toISOString(),
+          note: '36Kr items currently omit stable per-item publication timestamps; freshness is verified from the official RSS channel timestamp plus live item count.',
+          errors
+        };
+        break;
       }
-      if (fresh.size >= MIN_FRESH_ITEMS) break;
+      errors.push(`${url}: feedItems=${rows.length}, freshFeedTimestamp=${builtAt !== null}`);
     } catch (error) {
       errors.push(`${url}: ${String(error?.message || error)}`);
     }
   }
 
-  const timestamps = [...fresh.values()];
-  const result = {
-    id: source.id,
-    freshItems: fresh.size,
-    newestPublishedAt: timestamps.length ? new Date(Math.max(...timestamps)).toISOString() : null,
-    oldestFreshPublishedAt: timestamps.length ? new Date(Math.min(...timestamps)).toISOString() : null,
-    errors
-  };
-  results.push(result);
-  if (fresh.size < MIN_FRESH_ITEMS) {
+  if (!result) {
     failed = true;
-    console.error(`RSS_FRESHNESS_FAIL ${source.id}: freshItems=${fresh.size} < ${MIN_FRESH_ITEMS}; ${errors.join('; ')}`);
+    result = { id: source.id, mode: source.mode === 'item' ? 'item-level' : 'feed-level', errors };
+    console.error(`RSS_FRESHNESS_FAIL ${source.id}: ${errors.join('; ')}`);
   }
+  results.push(result);
 }
 
 console.log(JSON.stringify({
   ok: !failed,
-  maxItemAgeSeconds: Math.round(MAX_ITEM_AGE_MS / 1000),
-  minFreshItems: MIN_FRESH_ITEMS,
+  maxAgeSeconds: Math.round(MAX_ITEM_AGE_MS / 1000),
+  minRequiredItems: MIN_FRESH_ITEMS,
   sources: results
 }, null, 2));
 
