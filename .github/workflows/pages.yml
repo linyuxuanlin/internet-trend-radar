@@ -50,12 +50,13 @@ jobs:
           BUILD_SHA="$GITHUB_SHA" node scripts/stamp-build-provenance.mjs
           node scripts/write-health-manifest.mjs
 
-      - name: Verify production real-data gate
+      - name: Verify production real-data and AI gates
         env:
           REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu,ithome,solidot
         run: |
           MIN_HEALTHY_SOURCES=12 MIN_DIRECT_CN_SOURCES=10 node scripts/validate-real-dashboard.mjs
           node scripts/validate-opportunities.mjs
+          node scripts/validate-ai-assets.mjs
           EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-build-provenance.mjs
           EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-health-manifest.mjs
 
@@ -79,11 +80,12 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-      - name: Verify live Pages real-data snapshot
+      - name: Verify live Pages snapshot
         timeout-minutes: 3
         env:
           DASHBOARD_URL: ${{ steps.deployment.outputs.page_url }}data/dashboard.json
           HEALTH_URL: ${{ steps.deployment.outputs.page_url }}data/health.json
+          OPPORTUNITIES_URL: ${{ steps.deployment.outputs.page_url }}data/opportunities.json
           MIN_HEALTHY_SOURCES: '12'
           MIN_DIRECT_CN_SOURCES: '10'
           REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu,ithome,solidot
@@ -91,12 +93,12 @@ jobs:
         run: |
           for attempt in 1 2 3 4 5 6; do
             echo "Live snapshot verification attempt ${attempt}/6: ${DASHBOARD_URL}"
-            if node scripts/validate-real-dashboard.mjs && node scripts/validate-build-provenance.mjs && node scripts/validate-health-manifest.mjs; then
+            if node scripts/validate-real-dashboard.mjs && node scripts/validate-build-provenance.mjs && node scripts/validate-health-manifest.mjs && node scripts/validate-opportunities-live.mjs && node scripts/validate-ai-assets.mjs; then
               exit 0
             fi
             if [ "$attempt" -lt 6 ]; then
               sleep 10
             fi
           done
-          echo "Published Pages dashboard/health manifest never passed real-data and commit-provenance gates" >&2
+          echo "Published Pages dashboard/health/AI assets never passed real-data and provenance gates" >&2
           exit 1
