@@ -51,7 +51,7 @@ const aiDebugDB = {
     if (sql.includes('SELECT MAX(last_success_at)')) return { async first() { return { value: '2026-08-21T19:00:00.000Z' }; } };
     if (sql.includes('SELECT id,last_error,last_error_at FROM sources')) return { async all() { return { results: [] }; } };
     if (sql.includes('current_score >= 45') && !sql.includes('ai_updated_at') && !sql.includes('length(trim')) return { async first() { return { count: 8 }; } };
-    if (sql.includes('length(trim(COALESCE(ai_summary'))) return { async first() { return { count: 3 }; } };
+    if (sql.includes('COALESCE(ai_summary')) return { async first() { return { count: 3 }; } };
     if (sql.includes("julianday(ai_updated_at) < julianday('now','-6 hours')")) return { async first() { return { count: 2 }; } };
     if (sql.includes('SELECT MAX(ai_updated_at)')) return { async first() { return { value: '2026-08-21T18:30:00.000Z' }; } };
     throw new Error(`unexpected AI debug query: ${sql}`);
