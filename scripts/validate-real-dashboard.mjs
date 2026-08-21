@@ -21,7 +21,8 @@ const OFFICIAL_HOSTS = {
   juejin: ['juejin.cn'],
   baidu: ['baidu.com'],
   toutiao: ['toutiao.com'],
-  hupu: ['hupu.com']
+  hupu: ['hupu.com'],
+  ithome: ['ithome.com']
 };
 
 function fail(message) {
