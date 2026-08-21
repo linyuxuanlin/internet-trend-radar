@@ -92,8 +92,8 @@ export default {
       return routeApi(env, request);
     }
 
-    // The public dashboard has its own fail-closed real snapshot fallback. Do not let
-    // D1 schema initialization short-circuit it before it can recover from a DB outage.
+    // Non-dashboard APIs require D1 and should fail explicitly when schema bootstrap fails.
+    // The dashboard is handled separately below so its verified real Pages fallback stays available.
     if (url.pathname.startsWith('/api/') && env.DB && url.pathname !== '/api/dashboard') {
       try {
         await ensureSchema(env);
@@ -122,6 +122,17 @@ export default {
     }
 
     if (url.pathname === '/api/dashboard') {
+      // A freshly auto-provisioned D1 is empty. Bootstrap the schema before the first
+      // readiness query so the Worker can actually self-start and collect real data.
+      // If D1 itself is broken, keep the error non-fatal here: routeApi() can still
+      // serve the separately CI-gated GitHub Pages real snapshot fallback.
+      if (env.DB) {
+        try {
+          await ensureSchema(env);
+        } catch (err) {
+          console.error('dashboard D1 schema bootstrap failed; trying real snapshot fallback', err);
+        }
+      }
       await ensureInitialData(env);
     }
 
