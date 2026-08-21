@@ -6,7 +6,10 @@ function normalizeCode(value) {
 }
 
 export function classifySourceFailure(input) {
-  const message = String(input?.message ?? input?.last_error ?? input ?? '').trim();
+  const rawMessage = input && typeof input === 'object'
+    ? (input.message ?? input.last_error ?? '')
+    : (input ?? '');
+  const message = String(rawMessage).trim();
   const explicitCode = normalizeCode(input?.code ?? input?.cause?.code ?? input?.last_error_code);
   const explicitType = String(input?.last_error_type || '').trim().toLowerCase();
   if (!message && !explicitCode && !explicitType) return { type: null, code: null };
