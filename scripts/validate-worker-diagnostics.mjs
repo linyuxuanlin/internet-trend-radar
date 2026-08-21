@@ -13,6 +13,7 @@ const missingBinding = await parse(await worker.fetch(new Request('https://examp
 assert(missingBinding.status === 200, `missing DB debug status=${missingBinding.status}`);
 assert(missingBinding.body.db === false, 'missing DB binding must be reported');
 assert(missingBinding.body.schema?.error === 'missing DB binding', 'missing DB schema error must be explicit');
+assert(missingBinding.body.ai?.binding === false, 'missing AI binding must be reported');
 
 const missingTablesDB = {
   prepare(sql) {
@@ -33,6 +34,43 @@ assert(missingTables.body.schema.tables.raw_items === false, 'missing table shou
 
 const health = await parse(await worker.fetch(new Request('https://example.test/api/health'), {}));
 assert(health.status === 200 && health.body.ok === true, 'health must remain reachable without D1');
+
+const aiDebugDB = {
+  prepare(sql) {
+    if (sql.includes('sqlite_master')) {
+      return {
+        bind() { return this; },
+        async all() { return { results: ['sources', 'raw_items', 'topics', 'topic_snapshots', 'topic_sources'].map(name => ({ name })) }; }
+      };
+    }
+    if (sql === 'SELECT COUNT(*) as count FROM raw_items') return { async first() { return { count: 240 }; } };
+    if (sql === 'SELECT COUNT(*) as count FROM topics') return { async first() { return { count: 42 }; } };
+    if (sql === 'SELECT COUNT(*) as count FROM sources') return { async first() { return { count: 12 }; } };
+    if (sql.includes('FROM sources WHERE last_success_at IS NOT NULL')) return { async first() { return { count: 10 }; } };
+    if (sql.includes('FROM sources WHERE last_error_at IS NOT NULL')) return { async first() { return { count: 2 }; } };
+    if (sql.includes('SELECT MAX(last_success_at)')) return { async first() { return { value: '2026-08-21T19:00:00.000Z' }; } };
+    if (sql.includes('SELECT id,last_error,last_error_at FROM sources')) return { async all() { return { results: [] }; } };
+    if (sql.includes('current_score >= 45') && !sql.includes('ai_updated_at') && !sql.includes('length(trim')) ) return { async first() { return { count: 8 }; } };
+    if (sql.includes('length(trim(COALESCE(ai_summary'))) return { async first() { return { count: 3 }; } };
+    if (sql.includes("julianday(ai_updated_at) < julianday('now','-6 hours')")) return { async first() { return { count: 2 }; } };
+    if (sql.includes('SELECT MAX(ai_updated_at)')) return { async first() { return { value: '2026-08-21T18:30:00.000Z' }; } };
+    throw new Error(`unexpected AI debug query: ${sql}`);
+  }
+};
+const aiDebug = await parse(await worker.fetch(new Request('https://example.test/api/debug'), {
+  DB: aiDebugDB,
+  AI: { run() {} },
+  AI_MODEL: '@cf/test/model'
+}));
+assert(aiDebug.status === 200, `AI debug status=${aiDebug.status}`);
+assert(aiDebug.body.ready === true, 'AI debug fixture must remain real-data ready');
+assert(aiDebug.body.ai?.binding === true, 'AI binding presence must be reported');
+assert(aiDebug.body.ai?.model === '@cf/test/model', 'configured AI model must be reported');
+assert(aiDebug.body.ai?.eligible_topics === 8, `eligible AI topics=${aiDebug.body.ai?.eligible_topics}`);
+assert(aiDebug.body.ai?.verified_topics === 3, `verified AI topics=${aiDebug.body.ai?.verified_topics}`);
+assert(aiDebug.body.ai?.pending_topics === 5, `pending AI topics=${aiDebug.body.ai?.pending_topics}`);
+assert(aiDebug.body.ai?.stale_topics === 2, `stale AI topics=${aiDebug.body.ai?.stale_topics}`);
+assert(aiDebug.body.ai?.last_updated_at === '2026-08-21T18:30:00.000Z', 'last AI update timestamp must be reported');
 
 // A freshly provisioned D1 must be schema-bootstrapped before the dashboard performs
 // its first topics readiness query. This regression test proves the bootstrap order and
@@ -120,4 +158,4 @@ try {
   globalThis.fetch = originalFetch;
 }
 
-console.log('Worker D1 bootstrap, diagnostics, and truthful real-dashboard fallback validated');
+console.log('Worker D1 bootstrap, AI readiness diagnostics, and truthful real-dashboard fallback validated');
