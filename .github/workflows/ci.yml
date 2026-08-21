@@ -56,10 +56,15 @@ jobs:
           REQUIRE_ITHOME=1 node scripts/enrich-ithome.mjs
           REQUIRE_SOLIDOT=1 node scripts/enrich-solidot.mjs
           node scripts/probe-degraded-sources.mjs
+          node scripts/normalize-source-summaries.mjs
           node scripts/enrich-ai-opportunities.mjs
+          node scripts/write-opportunities.mjs
           BUILD_SHA="$GITHUB_SHA" node scripts/stamp-build-provenance.mjs
           node scripts/write-health-manifest.mjs
           MIN_HEALTHY_SOURCES=12 MIN_DIRECT_CN_SOURCES=10 node scripts/validate-real-dashboard.mjs
+          node scripts/validate-opportunities.mjs
+          node scripts/validate-ai-assets.mjs
+          node scripts/validate-ai-quality.mjs
           EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-build-provenance.mjs
           EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-health-manifest.mjs
 
@@ -72,7 +77,7 @@ jobs:
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT
           for attempt in 1 2 3 4 5; do
-            if curl --fail --silent http://127.0.0.1:4173/data/dashboard.json >/dev/null && curl --fail --silent http://127.0.0.1:4173/data/health.json >/dev/null; then
+            if curl --fail --silent http://127.0.0.1:4173/data/dashboard.json >/dev/null && curl --fail --silent http://127.0.0.1:4173/data/health.json >/dev/null && curl --fail --silent http://127.0.0.1:4173/data/opportunities.json >/dev/null; then
               break
             fi
             sleep 1
@@ -80,3 +85,4 @@ jobs:
           DASHBOARD_URL=http://127.0.0.1:4173/data/dashboard.json MIN_HEALTHY_SOURCES=12 MIN_DIRECT_CN_SOURCES=10 node scripts/validate-real-dashboard.mjs
           DASHBOARD_URL=http://127.0.0.1:4173/data/dashboard.json EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-build-provenance.mjs
           DASHBOARD_URL=http://127.0.0.1:4173/data/dashboard.json HEALTH_URL=http://127.0.0.1:4173/data/health.json EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-health-manifest.mjs
+          OPPORTUNITIES_URL=http://127.0.0.1:4173/data/opportunities.json node scripts/validate-opportunities-live.mjs

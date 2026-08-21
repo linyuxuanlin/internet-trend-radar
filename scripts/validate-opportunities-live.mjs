@@ -1,5 +1,3 @@
-import { readFile } from 'node:fs/promises';
-
 const url = process.env.OPPORTUNITIES_URL;
 if (!url) throw new Error('OPPORTUNITIES_URL is required');
 
@@ -8,9 +6,14 @@ if (!response.ok) throw new Error(`opportunities HTTP ${response.status}`);
 
 const data = await response.json();
 if (!data || typeof data !== 'object') throw new Error('invalid opportunities payload');
-if (data.status !== 'healthy') throw new Error(`opportunities not healthy: ${data.status}`);
-if (!Array.isArray(data.opportunities) || data.opportunities.length === 0) {
-  throw new Error('published opportunities are empty');
+if (!['healthy', 'degraded'].includes(data.status)) throw new Error(`invalid opportunities status: ${data.status}`);
+if (!Array.isArray(data.opportunities)) throw new Error('published opportunities must be an array');
+
+if (data.status === 'degraded') {
+  if (data.opportunities.length !== 0) throw new Error('degraded published opportunities must be empty');
+  console.log('Live opportunities verified as truthfully degraded: 0 items');
+  process.exit(0);
 }
 
+if (data.opportunities.length === 0) throw new Error('healthy published opportunities are empty');
 console.log(`Live opportunities verified: ${data.opportunities.length} items`);

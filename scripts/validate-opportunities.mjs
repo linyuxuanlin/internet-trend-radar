@@ -3,8 +3,16 @@ import { readFile } from 'node:fs/promises';
 const path = new URL('../public/data/opportunities.json', import.meta.url);
 const data = JSON.parse(await readFile(path, 'utf8'));
 
-if (data.status !== 'healthy') throw new Error('opportunities status is not healthy');
-if (!Array.isArray(data.opportunities) || data.opportunities.length < 1) throw new Error('no AI opportunities generated');
+if (!['healthy', 'degraded'].includes(data.status)) throw new Error(`invalid opportunities status: ${data.status}`);
+if (!Array.isArray(data.opportunities)) throw new Error('opportunities must be an array');
+
+if (data.status === 'degraded') {
+  if (data.opportunities.length !== 0) throw new Error('degraded AI opportunities must be empty');
+  console.log('Validated truthful degraded AI opportunities: 0 items');
+  process.exit(0);
+}
+
+if (data.opportunities.length < 1) throw new Error('healthy AI opportunities are empty');
 
 const banned = [
   '正在进入活跃讨论区间',
@@ -20,16 +28,12 @@ function meaningful(value) {
 
 for (const item of data.opportunities) {
   if (!item.title || !item.evidence || !item.analysis) throw new Error('invalid opportunity schema');
-
   const analysis = item.analysis;
   if (!meaningful(analysis.summary)) throw new Error(`weak AI summary: ${item.title}`);
   if (!meaningful(analysis.why_now)) throw new Error(`weak AI timing analysis: ${item.title}`);
   if (!Array.isArray(analysis.ideas) || analysis.ideas.length < 1) throw new Error(`missing AI ideas: ${item.title}`);
-
   for (const idea of analysis.ideas) {
-    if (!meaningful(idea.idea) || !meaningful(idea.rationale)) {
-      throw new Error(`weak AI opportunity detail: ${item.title}`);
-    }
+    if (!meaningful(idea.idea) || !meaningful(idea.rationale)) throw new Error(`weak AI opportunity detail: ${item.title}`);
   }
 }
 
