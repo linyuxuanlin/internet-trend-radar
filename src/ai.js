@@ -69,7 +69,26 @@ export async function analyzeTopic(env, topic, evidence) {
 
 export async function enrichTopTopics(env) {
   const topN = Math.max(1, Math.min(20, Number(env.AI_TOP_N || 8)));
-  const { results = [] } = await env.DB.prepare(`SELECT * FROM topics WHERE current_score >= 45 AND (ai_updated_at IS NULL OR julianday(ai_updated_at) < julianday('now','-6 hours')) ORDER BY breakout_score DESC, current_score DESC LIMIT ?`).bind(topN).all();
+  const { results = [] } = await env.DB.prepare(`
+    SELECT * FROM topics
+    WHERE current_score >= 45
+      AND (
+        ai_updated_at IS NULL
+        OR julianday(ai_updated_at) < julianday('now','-6 hours')
+        OR ai_summary IS NULL OR length(trim(ai_summary)) < 20
+        OR ai_why_now IS NULL OR length(trim(ai_why_now)) < 20
+        OR ai_opportunities_json IS NULL OR ai_opportunities_json = '[]'
+        OR ai_summary LIKE '%值得关注%' OR ai_summary LIKE '%热度较高%' OR ai_summary LIKE '%持续升温%'
+        OR ai_summary LIKE '%具有重要意义%' OR ai_summary LIKE '%前景广阔%' OR ai_summary LIKE '%机会巨大%'
+        OR ai_why_now LIKE '%值得关注%' OR ai_why_now LIKE '%热度较高%' OR ai_why_now LIKE '%持续升温%'
+        OR ai_why_now LIKE '%具有重要意义%' OR ai_why_now LIKE '%前景广阔%' OR ai_why_now LIKE '%机会巨大%'
+      )
+    ORDER BY
+      CASE WHEN ai_updated_at IS NULL OR ai_summary IS NULL OR ai_why_now IS NULL OR ai_opportunities_json IS NULL THEN 0 ELSE 1 END,
+      breakout_score DESC,
+      current_score DESC
+    LIMIT ?
+  `).bind(topN).all();
   let count = 0;
   for (const topic of results) {
     const { results: evidence = [] } = await env.DB.prepare(`SELECT source_id,title,url,rank,captured_at FROM topic_sources WHERE topic_id=? ORDER BY captured_at DESC LIMIT 12`).bind(topic.id).all();
