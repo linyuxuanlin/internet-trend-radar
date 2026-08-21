@@ -27,6 +27,39 @@ jobs:
           node scripts/validate-worker-diagnostics.mjs
           node scripts/validate-ai-blocked-reasons.mjs
 
+      - name: Probe live Worker AI diagnostics
+        timeout-minutes: 1
+        env:
+          AI_DEBUG_URL: https://internet-trend-radar.linyuxuanlin.workers.dev/api/debug
+        run: |
+          status=$(curl --silent --show-error --max-time 15 --output /tmp/ai-debug.json --write-out '%{http_code}' "$AI_DEBUG_URL" || true)
+          echo "Live AI debug HTTP status: $status"
+          if [ "$status" != "200" ]; then
+            echo "::warning::Live Worker diagnostics unavailable (HTTP $status); keeping CI truthful without synthetic AI data"
+            cat /tmp/ai-debug.json 2>/dev/null || true
+            exit 0
+          fi
+          node - <<'NODE'
+          const fs = require('fs');
+          const d = JSON.parse(fs.readFileSync('/tmp/ai-debug.json', 'utf8'));
+          if (!d.ai || typeof d.ai !== 'object') throw new Error('live /api/debug missing ai diagnostics');
+          const required = ['binding','eligible_topics','attempted_topics','verified_topics','pending_topics','stale_topics','ready_for_inference','blocked_reason'];
+          for (const key of required) if (!(key in d.ai)) throw new Error(`live /api/debug missing ai.${key}`);
+          const allowed = new Set([null,'missing-ai-and-db-binding','missing-db-binding','d1-schema-incomplete','d1-schema-probe-failed','missing-ai-binding','no-eligible-topics','inference-not-run','outputs-failed-quality-gate','partial-ai-coverage','ai-readiness-query-failed']);
+          if (!allowed.has(d.ai.blocked_reason)) throw new Error(`unknown live blocker: ${d.ai.blocked_reason}`);
+          console.log(JSON.stringify({
+            binding: d.ai.binding,
+            model: d.ai.model,
+            eligible_topics: d.ai.eligible_topics,
+            attempted_topics: d.ai.attempted_topics,
+            verified_topics: d.ai.verified_topics,
+            pending_topics: d.ai.pending_topics,
+            stale_topics: d.ai.stale_topics,
+            ready_for_inference: d.ai.ready_for_inference,
+            blocked_reason: d.ai.blocked_reason
+          }, null, 2));
+          NODE
+
       - name: Validate Pages patch
         run: |
           cp public/index.html /tmp/index.html
