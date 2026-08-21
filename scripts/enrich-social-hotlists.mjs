@@ -66,9 +66,11 @@ function mergeTopics(existing, incoming) {
     old.status = topicStatus(old.current_score, old.breakout_score);
     old.last_seen_at = [old.last_seen_at, topic.last_seen_at].filter(Boolean).sort().at(-1) || old.last_seen_at;
   }
+  // Do not impose a post-enrichment topic cap here. Existing enrichers publish
+  // an exact source item count that is later cross-checked against topic refs;
+  // truncating globally would silently delete valid real rows from other sources.
   return [...byId.values()]
-    .sort((a, b) => Number(b.current_score || 0) - Number(a.current_score || 0) || Number(b.breakout_score || 0) - Number(a.breakout_score || 0))
-    .slice(0, 240);
+    .sort((a, b) => Number(b.current_score || 0) - Number(a.current_score || 0) || Number(b.breakout_score || 0) - Number(a.breakout_score || 0));
 }
 
 function setSource(dashboard, source) {
