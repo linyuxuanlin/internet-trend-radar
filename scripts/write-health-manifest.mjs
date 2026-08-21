@@ -64,8 +64,13 @@ const requiredDirect = REQUIRED_DIRECT_CN.map(id => sourceHealth.find(item => it
   freshnessSeconds: null
 });
 
+const ai = dashboard.ai || {};
+const aiOpportunities = Array.isArray(dashboard.topics)
+  ? dashboard.topics.reduce((count, topic) => count + (Array.isArray(topic?.opportunities) ? topic.opportunities.length : 0), 0)
+  : 0;
+
 const manifest = {
-  schemaVersion: 3,
+  schemaVersion: 4,
   generatedAt: dashboard.generatedAt || null,
   buildSha: dashboard.buildSha || null,
   preview: dashboard.preview,
@@ -74,6 +79,14 @@ const manifest = {
   sourceCount: sources.length,
   healthySourceCount: healthySources.length,
   degradedSourceCount: sourceHealth.filter(source => !source.healthy).length,
+  aiAnalysis: {
+    status: ai.available || aiOpportunities > 0 ? 'healthy' : 'degraded',
+    provider: ai.provider || null,
+    generatedAt: ai.generatedAt || null,
+    matchedCount: Number(ai.matchedCount || 0),
+    opportunityCount: aiOpportunities,
+    error: ai.error || null
+  },
   sourceHealth,
   requiredDirect
 };
