@@ -23,10 +23,12 @@ jobs:
           node --check /tmp/frontend.js
 
       - name: Validate worker diagnostics and source fallback
+        timeout-minutes: 2
         run: |
           node scripts/validate-worker-diagnostics.mjs
           node scripts/validate-ai-blocked-reasons.mjs
           node scripts/validate-dailyhot-fallback.mjs
+          node scripts/validate-dailyhot-live.mjs
 
       - name: Probe live Worker AI diagnostics
         timeout-minutes: 1
