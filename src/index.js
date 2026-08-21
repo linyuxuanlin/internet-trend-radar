@@ -92,7 +92,9 @@ export default {
       return routeApi(env, request);
     }
 
-    if (url.pathname.startsWith('/api/') && env.DB) {
+    // The public dashboard has its own fail-closed real snapshot fallback. Do not let
+    // D1 schema initialization short-circuit it before it can recover from a DB outage.
+    if (url.pathname.startsWith('/api/') && env.DB && url.pathname !== '/api/dashboard') {
       try {
         await ensureSchema(env);
       } catch (err) {
