@@ -8,55 +8,30 @@ const HEALTH_URL = String(process.env.HEALTH_URL || '').trim();
 const FETCH_TIMEOUT_MS = Number(process.env.DASHBOARD_FETCH_TIMEOUT_MS || 15 * 1000);
 const MAX_AGE_MS = Number(process.env.MAX_SNAPSHOT_AGE_MS || 10 * 60 * 1000);
 const EXPECTED_BUILD_SHA = String(process.env.EXPECTED_BUILD_SHA || '').trim().toLowerCase();
-const REQUIRED_DIRECT_CN = String(process.env.REQUIRED_DIRECT_CN || 'v2ex,sspai,bilibili')
-  .split(',')
-  .map(value => value.trim())
-  .filter(Boolean);
+const REQUIRED_DIRECT_CN = String(process.env.REQUIRED_DIRECT_CN || 'v2ex,sspai,bilibili').split(',').map(value => value.trim()).filter(Boolean);
 
-function fail(message) {
-  console.error(`HEALTH_MANIFEST_GATE_FAIL ${message}`);
-  process.exitCode = 1;
-}
-
+function fail(message) { console.error(`HEALTH_MANIFEST_GATE_FAIL ${message}`); process.exitCode = 1; }
 async function loadJson(localUrl, remoteUrl, label) {
   if (!remoteUrl) return JSON.parse(await readFile(localUrl, 'utf8'));
   const url = new URL(remoteUrl);
   if (!['http:', 'https:'].includes(url.protocol)) throw new Error(`${label} URL must use http(s)`);
   url.searchParams.set('_radar_check', String(Date.now()));
-  const response = await fetch(url, {
-    cache: 'no-store',
-    headers: { accept: 'application/json', 'cache-control': 'no-cache' },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
-  });
+  const response = await fetch(url, { cache: 'no-store', headers: { accept: 'application/json', 'cache-control': 'no-cache' }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!response.ok) throw new Error(`${label} fetch failed: HTTP ${response.status} ${response.statusText}`);
   return response.json();
 }
 
-let dashboard;
-let health;
-try {
-  [dashboard, health] = await Promise.all([
-    loadJson(DASHBOARD, DASHBOARD_URL, 'dashboard'),
-    loadJson(HEALTH, HEALTH_URL, 'health manifest')
-  ]);
-} catch (error) {
-  fail(error instanceof Error ? error.message : String(error));
-  process.exit();
-}
+let dashboard; let health;
+try { [dashboard, health] = await Promise.all([loadJson(DASHBOARD, DASHBOARD_URL, 'dashboard'), loadJson(HEALTH, HEALTH_URL, 'health manifest')]); }
+catch (error) { fail(error instanceof Error ? error.message : String(error)); process.exit(); }
 
 const topics = Array.isArray(dashboard.topics) ? dashboard.topics : [];
 const sources = Array.isArray(dashboard.sources) ? dashboard.sources : [];
 const healthySources = sources.filter(source => source?.last_success_at && Number(source?.last_item_count || 0) > 0);
 const topicRefsBySource = new Map();
-for (const topic of topics) {
-  for (const ref of Array.isArray(topic?.sources) ? topic.sources : []) {
-    const sourceId = String(ref?.source_id || '').trim();
-    if (!sourceId) continue;
-    topicRefsBySource.set(sourceId, (topicRefsBySource.get(sourceId) || 0) + 1);
-  }
-}
+for (const topic of topics) for (const ref of Array.isArray(topic?.sources) ? topic.sources : []) { const sourceId = String(ref?.source_id || '').trim(); if (sourceId) topicRefsBySource.set(sourceId, (topicRefsBySource.get(sourceId) || 0) + 1); }
 
-if (health.schemaVersion !== 3) fail(`schemaVersion must be 3; got ${health.schemaVersion}`);
+if (health.schemaVersion !== 4) fail(`schemaVersion must be 4; got ${health.schemaVersion}`);
 if (health.preview !== false || dashboard.preview !== false) fail('preview must be false in dashboard and health manifest');
 if (health.ready !== true || dashboard.ready !== true) fail('ready must be true in dashboard and health manifest');
 if (health.generatedAt !== dashboard.generatedAt) fail(`generatedAt mismatch: health=${health.generatedAt} dashboard=${dashboard.generatedAt}`);
@@ -71,20 +46,25 @@ const generatedAt = Date.parse(health.generatedAt);
 if (!Number.isFinite(generatedAt)) fail(`generatedAt must be valid: ${health.generatedAt}`);
 else if (Date.now() - generatedAt > MAX_AGE_MS) fail(`health manifest is stale: generatedAt=${health.generatedAt}`);
 
+const verifiedAI = topics.filter(topic => topic?.ai_provenance?.verified_non_heuristic === true);
+const aiOpportunityCount = verifiedAI.reduce((count, topic) => count + (Array.isArray(topic?.opportunities) ? topic.opportunities.length : 0), 0);
+const expectedAIStatus = verifiedAI.length > 0 || aiOpportunityCount > 0 ? 'healthy' : 'degraded';
+if (!health.aiAnalysis || typeof health.aiAnalysis !== 'object') fail('schema v4 requires aiAnalysis');
+else {
+  if (health.aiAnalysis.status !== expectedAIStatus) fail(`AI status mismatch: health=${health.aiAnalysis.status} expected=${expectedAIStatus}`);
+  if (Number(health.aiAnalysis.matchedCount || 0) !== verifiedAI.length) fail(`AI matchedCount mismatch: health=${health.aiAnalysis.matchedCount} verified=${verifiedAI.length}`);
+  if (Number(health.aiAnalysis.opportunityCount || 0) !== aiOpportunityCount) fail(`AI opportunityCount mismatch: health=${health.aiAnalysis.opportunityCount} verified=${aiOpportunityCount}`);
+}
+
 const sourceRows = Array.isArray(health.sourceHealth) ? health.sourceHealth : [];
 if (sourceRows.length !== sources.length) fail(`sourceHealth row count mismatch: health=${sourceRows.length} dashboard=${sources.length}`);
 for (const source of sources) {
   const row = sourceRows.find(item => item?.id === source?.id);
-  if (!row) {
-    fail(`missing sourceHealth row: ${source?.id}`);
-    continue;
-  }
+  if (!row) { fail(`missing sourceHealth row: ${source?.id}`); continue; }
   const expectedHealthy = Boolean(source?.last_success_at && Number(source?.last_item_count || 0) > 0);
   const expectedRefs = Number(topicRefsBySource.get(source?.id) || 0);
   const successMs = source?.last_success_at ? Date.parse(source.last_success_at) : NaN;
-  const expectedFreshness = Number.isFinite(successMs) && Number.isFinite(generatedAt)
-    ? Math.max(0, Math.round((generatedAt - successMs) / 1000))
-    : null;
+  const expectedFreshness = Number.isFinite(successMs) && Number.isFinite(generatedAt) ? Math.max(0, Math.round((generatedAt - successMs) / 1000)) : null;
   const failure = classifySourceFailure(source);
   if (row.name !== (source?.name || null)) fail(`source ${source?.id} name mismatch`);
   if (row.healthy !== expectedHealthy) fail(`source ${source?.id} healthy mismatch: health=${row.healthy} expected=${expectedHealthy}`);
@@ -107,10 +87,7 @@ for (const id of REQUIRED_DIRECT_CN) {
   const source = sources.find(item => item?.id === id);
   const expectedHealthy = Boolean(source?.last_success_at && Number(source?.last_item_count || 0) > 0);
   const expectedRefs = Number(topicRefsBySource.get(id) || 0);
-  if (!row) {
-    fail(`missing required direct source row: ${id}`);
-    continue;
-  }
+  if (!row) { fail(`missing required direct source row: ${id}`); continue; }
   if (row.healthy !== expectedHealthy || row.healthy !== true) fail(`required direct source ${id} healthy mismatch: health=${row.healthy} expected=${expectedHealthy}`);
   if (row.kind !== source?.kind) fail(`required direct source ${id} kind mismatch: health=${row.kind} dashboard=${source?.kind}`);
   if (row.region !== source?.region) fail(`required direct source ${id} region mismatch: health=${row.region} dashboard=${source?.region}`);
@@ -118,25 +95,6 @@ for (const id of REQUIRED_DIRECT_CN) {
   if (Number(row.topicRefs) !== expectedRefs) fail(`required direct source ${id} topicRefs mismatch: health=${row.topicRefs} dashboard=${expectedRefs}`);
   if (row.lastSuccessAt !== source?.last_success_at) fail(`required direct source ${id} lastSuccessAt mismatch`);
 }
-
 if (requiredRows.length !== REQUIRED_DIRECT_CN.length) fail(`requiredDirect row count mismatch: health=${requiredRows.length} expected=${REQUIRED_DIRECT_CN.length}`);
 
-if (!process.exitCode) {
-  console.log(JSON.stringify({
-    ok: true,
-    healthLocation: HEALTH_URL || HEALTH.pathname,
-    dashboardLocation: DASHBOARD_URL || DASHBOARD.pathname,
-    buildSha: health.buildSha,
-    generatedAt: health.generatedAt,
-    topicCount: health.topicCount,
-    healthySourceCount: health.healthySourceCount,
-    degradedSourceCount: health.degradedSourceCount,
-    degradedSources: sourceRows.filter(row => !row.healthy).map(row => ({
-      id: row.id,
-      lastErrorType: row.lastErrorType,
-      lastErrorCode: row.lastErrorCode,
-      lastError: row.lastError
-    })),
-    requiredDirect: requiredRows.map(row => ({ id: row.id, itemCount: row.itemCount, topicRefs: row.topicRefs, freshnessSeconds: row.freshnessSeconds }))
-  }));
-}
+if (!process.exitCode) console.log(JSON.stringify({ ok: true, healthLocation: HEALTH_URL || HEALTH.pathname, dashboardLocation: DASHBOARD_URL || DASHBOARD.pathname, buildSha: health.buildSha, generatedAt: health.generatedAt, topicCount: health.topicCount, healthySourceCount: health.healthySourceCount, degradedSourceCount: health.degradedSourceCount, aiStatus: health.aiAnalysis?.status, verifiedAI: verifiedAI.length, degradedSources: sourceRows.filter(row => !row.healthy).map(row => ({ id: row.id, lastErrorType: row.lastErrorType, lastErrorCode: row.lastErrorCode, lastError: row.lastError })), requiredDirect: requiredRows.map(row => ({ id: row.id, itemCount: row.itemCount, topicRefs: row.topicRefs, freshnessSeconds: row.freshnessSeconds })) }));
