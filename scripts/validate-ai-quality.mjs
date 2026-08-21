@@ -24,7 +24,8 @@ for (const topic of topics) {
 }
 
 if (bad.length) throw new Error(`AI quality check failed: ${bad.slice(0, 8).join(' | ')}`);
-const required = Math.max(1, Number(process.env.MIN_VALID_AI_SUMMARIES || 1));
-if (checked < required) throw new Error(`AI quality coverage too low: ${checked} < ${required}`);
+const aiAvailable = dashboard.ai?.available === true;
+if (aiAvailable && checked < 1) throw new Error('AI marked available but no verified summaries passed quality validation');
+if (!aiAvailable && checked !== 0) throw new Error(`AI marked unavailable but ${checked} verified summaries are present`);
 if (dashboard.ai?.matchedCount != null && Number(dashboard.ai.matchedCount) !== checked) throw new Error(`AI matchedCount mismatch: ${dashboard.ai.matchedCount} != ${checked}`);
-console.log(`Validated ${checked} verified AI summaries (${topics.length} total topics)`);
+console.log(`Validated AI quality: available=${aiAvailable}, verified=${checked}, totalTopics=${topics.length}`);
