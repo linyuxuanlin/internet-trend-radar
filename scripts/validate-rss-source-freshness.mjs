@@ -8,9 +8,13 @@ const SOURCES = [
     id: '36kr',
     mode: 'feed',
     feeds: [
+      'https://www.36kr.com/feed',
       'https://36kr.com/feed',
+      'https://www.36kr.com/feed-article',
       'https://36kr.com/feed-article',
+      'https://www.36kr.com/feed-newsflash',
       'https://36kr.com/feed-newsflash',
+      'https://www.36kr.com/feed-moment',
       'https://36kr.com/feed-moment'
     ]
   }
@@ -56,7 +60,7 @@ async function fetchFeed(url) {
     redirect: 'follow',
     headers: {
       accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*;q=0.5',
-      'user-agent': 'Mozilla/5.0 trend-radar-rss-freshness/1.2',
+      'user-agent': 'Mozilla/5.0 trend-radar-rss-freshness/1.3',
       referer: url.includes('36kr.com') ? 'https://www.36kr.com/rss-center' : undefined
     },
     signal: AbortSignal.timeout(15000)
