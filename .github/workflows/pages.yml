@@ -50,10 +50,12 @@ jobs:
       - name: Verify production real-data and AI gates
         env:
           REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu,ithome,solidot
+          MIN_VALID_AI_SUMMARIES: '1'
         run: |
           MIN_HEALTHY_SOURCES=12 MIN_DIRECT_CN_SOURCES=10 node scripts/validate-real-dashboard.mjs
           node scripts/validate-opportunities.mjs
           node scripts/validate-ai-assets.mjs
+          node scripts/validate-ai-quality.mjs
           EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-build-provenance.mjs
           EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-health-manifest.mjs
       - name: Patch Pages frontend
@@ -85,7 +87,7 @@ jobs:
           REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu,ithome,solidot
         run: |
           for attempt in 1 2 3 4 5 6; do
-            if node scripts/validate-real-dashboard.mjs && node scripts/validate-build-provenance.mjs && node scripts/validate-health-manifest.mjs && node scripts/validate-opportunities-live.mjs && node scripts/validate-ai-assets.mjs; then
+            if node scripts/validate-real-dashboard.mjs && node scripts/validate-build-provenance.mjs && node scripts/validate-health-manifest.mjs && node scripts/validate-opportunities-live.mjs && node scripts/validate-ai-assets.mjs && node scripts/validate-ai-quality.mjs; then
               exit 0
             fi
             [ "$attempt" -lt 6 ] && sleep 10
