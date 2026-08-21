@@ -81,6 +81,9 @@ async function debugStatus(env) {
   }
 
   try {
+    const attemptedProbe = Promise.resolve()
+      .then(() => env.DB.prepare(`SELECT COUNT(*) as count FROM topics WHERE current_score >= 45 AND ai_updated_at IS NOT NULL`).first())
+      .catch(() => ({ count: null }));
     const [raw, topics, sources, healthy, failed, lastSuccess, errors, aiEligible, aiAttempted, aiVerified, aiStale, aiLastUpdated] = await Promise.all([
       env.DB.prepare('SELECT COUNT(*) as count FROM raw_items').first(),
       env.DB.prepare('SELECT COUNT(*) as count FROM topics').first(),
@@ -90,7 +93,7 @@ async function debugStatus(env) {
       env.DB.prepare('SELECT MAX(last_success_at) as value FROM sources').first(),
       env.DB.prepare(`SELECT id,last_error,last_error_at FROM sources WHERE last_error IS NOT NULL ORDER BY last_error_at DESC LIMIT 6`).all(),
       env.DB.prepare(`SELECT COUNT(*) as count FROM topics WHERE current_score >= 45`).first(),
-      env.DB.prepare(`SELECT COUNT(*) as count FROM topics WHERE current_score >= 45 AND ai_updated_at IS NOT NULL`).first(),
+      attemptedProbe,
       env.DB.prepare(`SELECT COUNT(*) as count FROM topics
         WHERE current_score >= 45
           AND ai_updated_at IS NOT NULL
@@ -113,8 +116,9 @@ async function debugStatus(env) {
     status.last_success_at = lastSuccess?.value || null;
     status.recent_errors = errors?.results || [];
     status.ai.eligible_topics = Number(aiEligible?.count || 0);
-    status.ai.attempted_topics = Number(aiAttempted?.count || 0);
     status.ai.verified_topics = Number(aiVerified?.count || 0);
+    const attemptedCount = aiAttempted?.count == null ? status.ai.verified_topics : Number(aiAttempted.count || 0);
+    status.ai.attempted_topics = Math.max(status.ai.verified_topics, attemptedCount);
     status.ai.pending_topics = Math.max(0, status.ai.eligible_topics - status.ai.verified_topics);
     status.ai.stale_topics = Number(aiStale?.count || 0);
     status.ai.last_updated_at = aiLastUpdated?.value || null;
