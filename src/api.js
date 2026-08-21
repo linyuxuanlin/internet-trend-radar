@@ -1,6 +1,8 @@
 import { json, fingerprintTitle, safeJsonParse, categoryFor } from './utils.js';
 import { collectAll, ingestExternal } from './collector.js';
 
+const DEFAULT_REAL_DASHBOARD_FALLBACK = 'https://linyuxuanlin.github.io/internet-trend-radar/data/dashboard.json';
+
 function previewData(category = '') {
   const now = new Date();
   const seed = [
@@ -37,9 +39,58 @@ function notReady(error, extra = {}) {
   };
 }
 
+async function fetchRealDashboardFallback(env, category, reason) {
+  const fallbackUrl = String(env.PUBLIC_FALLBACK_DASHBOARD_URL || DEFAULT_REAL_DASHBOARD_FALLBACK).trim();
+  const maxAgeMs = Math.max(1, Number(env.FALLBACK_MAX_AGE_HOURS || 4)) * 60 * 60 * 1000;
+  if (!fallbackUrl) return null;
+
+  try {
+    const response = await fetch(fallbackUrl, {
+      headers: { accept: 'application/json', 'user-agent': 'internet-trend-radar-worker-fallback/1.0' },
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    if (data?.preview !== false || data?.ready !== true) throw new Error('fallback snapshot is not real-data ready');
+    if (!Array.isArray(data?.topics) || data.topics.length < 1) throw new Error('fallback snapshot has no topics');
+    if (!Array.isArray(data?.sources) || data.sources.length < 1) throw new Error('fallback snapshot has no sources');
+
+    const generatedAt = Date.parse(data.generatedAt || '');
+    if (!Number.isFinite(generatedAt)) throw new Error('fallback snapshot has invalid generatedAt');
+    const age = Date.now() - generatedAt;
+    if (age < -5 * 60 * 1000) throw new Error('fallback snapshot is materially in the future');
+    if (age > maxAgeMs) throw new Error(`fallback snapshot is stale (${Math.round(age / 60000)}m)`);
+
+    const topics = category && category !== '全部'
+      ? data.topics.filter(topic => topic.category === category)
+      : data.topics;
+
+    return {
+      ...data,
+      ready: true,
+      preview: false,
+      topics,
+      fallback: {
+        active: true,
+        kind: 'github-pages-real-snapshot',
+        source: fallbackUrl,
+        reason: String(reason || 'worker D1 unavailable'),
+        fetchedAt: new Date().toISOString(),
+        maxAgeHours: maxAgeMs / 3600000
+      }
+    };
+  } catch (error) {
+    console.warn('real dashboard fallback unavailable', error);
+    return null;
+  }
+}
+
 async function dashboard(env, url) {
   const category = url.searchParams.get('category') || '';
-  if (!env.DB) return json(notReady('missing DB binding'), { status: 503 });
+  if (!env.DB) {
+    const fallback = await fetchRealDashboardFallback(env, category, 'missing DB binding');
+    return fallback ? json(fallback) : json(notReady('missing DB binding and no fresh real fallback snapshot'), { status: 503 });
+  }
 
   try {
     const where = category && category !== '全部' ? 'WHERE category=?' : '';
@@ -48,7 +99,8 @@ async function dashboard(env, url) {
     const { results: sources = [] } = await env.DB.prepare(`SELECT id,name,region,kind,last_success_at,last_error_at,last_error,last_item_count FROM sources ORDER BY region DESC,name`).all();
 
     if (!topics.length) {
-      return json(notReady('no real topics available yet', { sources }), { status: 503 });
+      const fallback = await fetchRealDashboardFallback(env, category, 'D1 has no real topics');
+      return fallback ? json(fallback) : json(notReady('no real topics available yet', { sources }), { status: 503 });
     }
 
     const { results: categories = [] } = await env.DB.prepare(`SELECT category,COUNT(*) count,ROUND(AVG(current_score),1) avg_score FROM topics GROUP BY category ORDER BY count DESC`).all();
@@ -56,7 +108,8 @@ async function dashboard(env, url) {
     return json({ generatedAt: new Date().toISOString(), ready:true, preview:false, topics: topics.map(t => ({ ...t, opportunities: safeJsonParse(t.ai_opportunities_json, []) || [] })), sources, categories, timeline });
   } catch (error) {
     console.error('dashboard real-data query failed', error);
-    return json(notReady(String(error?.message || error)), { status: 503 });
+    const fallback = await fetchRealDashboardFallback(env, category, `D1 dashboard query failed: ${String(error?.message || error)}`);
+    return fallback ? json(fallback) : json(notReady(String(error?.message || error)), { status: 503 });
   }
 }
 
