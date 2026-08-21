@@ -5,6 +5,10 @@ const sourceUrl = process.env.AI_SOURCE_URL || 'https://internet-trend-radar.lin
 const minMatches = Math.max(0, Number(process.env.MIN_AI_MATCHES || 0));
 const maxAgeMs = Math.max(1, Number(process.env.MAX_AI_AGE_HOURS || 12)) * 60 * 60 * 1000;
 const timeoutMs = Math.max(1000, Number(process.env.AI_FETCH_TIMEOUT_MS || 15000));
+const attempts = Math.max(1, Number(process.env.AI_FETCH_ATTEMPTS || 6));
+const retryMs = Math.max(0, Number(process.env.AI_FETCH_RETRY_MS || 10000));
+
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
 function normalizeTitle(value) {
   return String(value || '')
@@ -42,15 +46,22 @@ if (dashboard.preview !== false || dashboard.ready !== true || !Array.isArray(da
 const generatedAt = new Date().toISOString();
 let source = null;
 let fetchError = null;
-try {
-  const response = await fetch(sourceUrl, { signal: AbortSignal.timeout(timeoutMs), headers: { accept: 'application/json' } });
-  if (!response.ok) throw new Error(`AI source HTTP ${response.status}`);
-  source = await response.json();
-  if (source?.preview !== false || source?.ready !== true || !Array.isArray(source?.topics)) {
-    throw new Error('AI source is not a real-data ready dashboard');
+for (let attempt = 1; attempt <= attempts; attempt++) {
+  try {
+    const response = await fetch(sourceUrl, { signal: AbortSignal.timeout(timeoutMs), headers: { accept: 'application/json' } });
+    if (!response.ok) throw new Error(`AI source HTTP ${response.status}`);
+    const candidate = await response.json();
+    if (candidate?.preview !== false || candidate?.ready !== true || !Array.isArray(candidate?.topics)) {
+      throw new Error('AI source is not a real-data ready dashboard');
+    }
+    source = candidate;
+    fetchError = null;
+    break;
+  } catch (error) {
+    fetchError = String(error?.message || error);
+    console.warn(`AI source attempt ${attempt}/${attempts} failed: ${fetchError}`);
+    if (attempt < attempts && retryMs) await sleep(retryMs);
   }
-} catch (error) {
-  fetchError = String(error?.message || error);
 }
 
 let matchedCount = 0;
