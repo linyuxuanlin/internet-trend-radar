@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { classifySourceFailure } from './source-failure-diagnostics.mjs';
 
 const DASHBOARD = new URL('../public/data/dashboard.json', import.meta.url);
 const HEALTH = new URL('../public/data/health.json', import.meta.url);
@@ -55,7 +56,7 @@ for (const topic of topics) {
   }
 }
 
-if (health.schemaVersion !== 2) fail(`schemaVersion must be 2; got ${health.schemaVersion}`);
+if (health.schemaVersion !== 3) fail(`schemaVersion must be 3; got ${health.schemaVersion}`);
 if (health.preview !== false || dashboard.preview !== false) fail('preview must be false in dashboard and health manifest');
 if (health.ready !== true || dashboard.ready !== true) fail('ready must be true in dashboard and health manifest');
 if (health.generatedAt !== dashboard.generatedAt) fail(`generatedAt mismatch: health=${health.generatedAt} dashboard=${dashboard.generatedAt}`);
@@ -84,6 +85,7 @@ for (const source of sources) {
   const expectedFreshness = Number.isFinite(successMs) && Number.isFinite(generatedAt)
     ? Math.max(0, Math.round((generatedAt - successMs) / 1000))
     : null;
+  const failure = classifySourceFailure(source);
   if (row.name !== (source?.name || null)) fail(`source ${source?.id} name mismatch`);
   if (row.healthy !== expectedHealthy) fail(`source ${source?.id} healthy mismatch: health=${row.healthy} expected=${expectedHealthy}`);
   if (row.kind !== (source?.kind || null)) fail(`source ${source?.id} kind mismatch`);
@@ -93,6 +95,9 @@ for (const source of sources) {
   if (row.lastSuccessAt !== (source?.last_success_at || null)) fail(`source ${source?.id} lastSuccessAt mismatch`);
   if (row.lastErrorAt !== (source?.last_error_at || null)) fail(`source ${source?.id} lastErrorAt mismatch`);
   if (row.lastError !== (source?.last_error || null)) fail(`source ${source?.id} lastError mismatch`);
+  if (row.lastErrorType !== failure.type) fail(`source ${source?.id} lastErrorType mismatch: health=${row.lastErrorType} expected=${failure.type}`);
+  if (row.lastErrorCode !== failure.code) fail(`source ${source?.id} lastErrorCode mismatch: health=${row.lastErrorCode} expected=${failure.code}`);
+  if (!expectedHealthy && row.lastError && !row.lastErrorType) fail(`source ${source?.id} degraded failure must be classified`);
   if (row.freshnessSeconds !== expectedFreshness) fail(`source ${source?.id} freshnessSeconds mismatch: health=${row.freshnessSeconds} expected=${expectedFreshness}`);
 }
 
@@ -126,7 +131,12 @@ if (!process.exitCode) {
     topicCount: health.topicCount,
     healthySourceCount: health.healthySourceCount,
     degradedSourceCount: health.degradedSourceCount,
-    degradedSources: sourceRows.filter(row => !row.healthy).map(row => ({ id: row.id, lastError: row.lastError })),
+    degradedSources: sourceRows.filter(row => !row.healthy).map(row => ({
+      id: row.id,
+      lastErrorType: row.lastErrorType,
+      lastErrorCode: row.lastErrorCode,
+      lastError: row.lastError
+    })),
     requiredDirect: requiredRows.map(row => ({ id: row.id, itemCount: row.itemCount, topicRefs: row.topicRefs, freshnessSeconds: row.freshnessSeconds }))
   }));
 }
