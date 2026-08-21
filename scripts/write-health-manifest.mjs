@@ -1,4 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises';
+import { classifySourceFailure } from './source-failure-diagnostics.mjs';
 
 const DASHBOARD = new URL('../public/data/dashboard.json', import.meta.url);
 const HEALTH = new URL('../public/data/health.json', import.meta.url);
@@ -28,6 +29,7 @@ function sourceHealthRow(source) {
   const freshnessSeconds = Number.isFinite(successMs) && Number.isFinite(generatedMs)
     ? Math.max(0, Math.round((generatedMs - successMs) / 1000))
     : null;
+  const failure = classifySourceFailure(source);
   return {
     id: source?.id || null,
     name: source?.name || null,
@@ -39,6 +41,8 @@ function sourceHealthRow(source) {
     lastSuccessAt,
     lastErrorAt: source?.last_error_at || null,
     lastError: source?.last_error || null,
+    lastErrorType: failure.type,
+    lastErrorCode: failure.code,
     freshnessSeconds
   };
 }
@@ -55,11 +59,13 @@ const requiredDirect = REQUIRED_DIRECT_CN.map(id => sourceHealth.find(item => it
   lastSuccessAt: null,
   lastErrorAt: null,
   lastError: 'missing source row',
+  lastErrorType: 'unknown',
+  lastErrorCode: null,
   freshnessSeconds: null
 });
 
 const manifest = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   generatedAt: dashboard.generatedAt || null,
   buildSha: dashboard.buildSha || null,
   preview: dashboard.preview,
