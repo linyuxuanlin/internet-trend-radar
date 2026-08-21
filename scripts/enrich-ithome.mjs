@@ -7,23 +7,39 @@ const nowIso = new Date().toISOString();
 const MAX_FEED_ITEM_AGE_MS = Number(process.env.MAX_FEED_ITEM_AGE_MS || 7 * 24 * 60 * 60 * 1000);
 const MAX_FUTURE_SKEW_MS = Number(process.env.MAX_FUTURE_SKEW_MS || 5 * 60 * 1000);
 const MIN_FRESH_FEED_ITEMS = Number(process.env.MIN_FRESH_FEED_ITEMS || 5);
+const RSS_FETCH_ATTEMPTS = Math.max(1, Number(process.env.RSS_FETCH_ATTEMPTS || 4));
+const RSS_FETCH_RETRY_MS = Math.max(0, Number(process.env.RSS_FETCH_RETRY_MS || 1200));
 
 function clamp(n, min = 0, max = 100) {
   return Math.max(min, Math.min(max, Number.isFinite(Number(n)) ? Number(n) : min));
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function fetchFeed(timeoutMs = 15000) {
-  const response = await fetch(FEED, {
-    redirect: 'follow',
-    headers: {
-      'user-agent': 'Mozilla/5.0 trend-radar/1.8',
-      accept: 'application/rss+xml, application/xml, text/xml, */*;q=0.5',
-      referer: 'https://www.ithome.com/'
-    },
-    signal: AbortSignal.timeout(timeoutMs)
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return await response.text();
+  let lastError = null;
+  for (let attempt = 1; attempt <= RSS_FETCH_ATTEMPTS; attempt++) {
+    try {
+      const response = await fetch(FEED, {
+        redirect: 'follow',
+        headers: {
+          'user-agent': 'Mozilla/5.0 trend-radar/1.8',
+          accept: 'application/rss+xml, application/xml, text/xml, */*;q=0.5',
+          referer: 'https://www.ithome.com/'
+        },
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return await response.text();
+    } catch (error) {
+      lastError = error;
+      console.warn(`IT之家 RSS attempt ${attempt}/${RSS_FETCH_ATTEMPTS} failed: ${String(error?.message || error)}`);
+      if (attempt < RSS_FETCH_ATTEMPTS && RSS_FETCH_RETRY_MS) await sleep(RSS_FETCH_RETRY_MS * attempt);
+    }
+  }
+  throw lastError || new Error('IT之家 RSS fetch failed');
 }
 
 function decodeXml(text = '') {
