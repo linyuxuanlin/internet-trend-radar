@@ -22,10 +22,11 @@ jobs:
           PY
           node --check /tmp/frontend.js
 
-      - name: Validate worker diagnostics
+      - name: Validate worker diagnostics and source fallback
         run: |
           node scripts/validate-worker-diagnostics.mjs
           node scripts/validate-ai-blocked-reasons.mjs
+          node scripts/validate-dailyhot-fallback.mjs
 
       - name: Probe live Worker AI diagnostics
         timeout-minutes: 1
