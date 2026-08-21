@@ -6,7 +6,7 @@ const SOURCE_NAMES = {
 };
 
 function pickHeat(item) {
-  const candidates = [item.hot, item.hotValue, item.heat, item.score, item.view, item.views, item.data?.view, item.data?.like];
+  const candidates = [item.hot, item.hotValue, item.hot_value, item.heat, item.score, item.view, item.views, item.data?.view, item.data?.like];
   return Math.max(0, ...candidates.map(numberFromUnknown));
 }
 
@@ -22,17 +22,99 @@ function upstreamBases(env) {
   return [...new Set([...configured, ...defaults].map(x => x.replace(/\/$/, '')))];
 }
 
-async function fetchFromUpstream(base, sourceId) {
-  const res = await fetch(`${base}/${encodeURIComponent(sourceId)}`, {
-    headers: { 'user-agent': 'TrendRadarMVP/0.1 (+Cloudflare Workers)', accept: 'application/json' },
-    cf: { cacheTtl: 60, cacheEverything: false },
+async function fetchJson(url, options = {}) {
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36',
+      accept: 'application/json,text/plain,*/*',
+      ...(options.headers || {})
+    },
     signal: AbortSignal.timeout(12000)
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const body = await res.json();
+  return { res, body: await res.json() };
+}
+
+async function fetchFromUpstream(base, sourceId) {
+  const { body } = await fetchJson(`${base}/${encodeURIComponent(sourceId)}`, {
+    cf: { cacheTtl: 60, cacheEverything: false }
+  });
   const list = Array.isArray(body?.data) ? body.data : [];
   if (!list.length) throw new Error('empty real-data response');
-  return { body, list };
+  return { body, list, upstream: base };
+}
+
+async function fetchDirect(sourceId) {
+  if (sourceId === 'weibo') {
+    const { body } = await fetchJson('https://weibo.com/ajax/side/hotSearch', {
+      headers: { referer: 'https://weibo.com/' }
+    });
+    const rows = Array.isArray(body?.data?.realtime) ? body.data.realtime : [];
+    if (!rows.length) throw new Error('Weibo direct response empty');
+    return {
+      body: { title: '微博' },
+      upstream: 'https://weibo.com/ajax/side/hotSearch',
+      list: rows.map((v, i) => ({
+        id: v.mid || v.word_scheme || `weibo-${i}`,
+        title: v.word || v.word_scheme,
+        hot: v.num,
+        timestamp: v.onboard_time,
+        url: `https://s.weibo.com/weibo?q=${encodeURIComponent(v.word || v.word_scheme || '')}`
+      }))
+    };
+  }
+
+  if (sourceId === 'zhihu') {
+    const { body } = await fetchJson('https://api.zhihu.com/topstory/hot-lists/total?limit=50');
+    const rows = Array.isArray(body?.data) ? body.data : [];
+    if (!rows.length) throw new Error('Zhihu direct response empty');
+    return {
+      body: { title: '知乎' },
+      upstream: 'https://api.zhihu.com/topstory/hot-lists/total',
+      list: rows.map((v, i) => {
+        const target = v.target || {};
+        const questionId = String(target.url || '').split('/').pop();
+        return {
+          id: target.id || `zhihu-${i}`,
+          title: target.title,
+          desc: target.excerpt,
+          timestamp: target.created,
+          hot: numberFromUnknown(String(v.detail_text || '').split(' ')[0]) * 10000,
+          url: questionId ? `https://www.zhihu.com/question/${questionId}` : 'https://www.zhihu.com/hot'
+        };
+      })
+    };
+  }
+
+  if (sourceId === 'douyin') {
+    const cookieRes = await fetch('https://www.douyin.com/passport/general/login_guiding_strategy/?aid=6383', {
+      headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36' },
+      signal: AbortSignal.timeout(12000)
+    });
+    if (!cookieRes.ok) throw new Error(`Douyin cookie HTTP ${cookieRes.status}`);
+    const setCookie = cookieRes.headers.get('set-cookie') || '';
+    const token = /passport_csrf_token=([^;]+)/.exec(setCookie)?.[1];
+    if (!token) throw new Error('Douyin csrf cookie missing');
+    const { body } = await fetchJson('https://www.douyin.com/aweme/v1/web/hot/search/list/?device_platform=webapp&aid=6383&channel=channel_pc_web&detail_list=1', {
+      headers: { cookie: `passport_csrf_token=${token}`, referer: 'https://www.douyin.com/' }
+    });
+    const rows = Array.isArray(body?.data?.word_list) ? body.data.word_list : [];
+    if (!rows.length) throw new Error('Douyin direct response empty');
+    return {
+      body: { title: '抖音' },
+      upstream: 'https://www.douyin.com/aweme/v1/web/hot/search/list/',
+      list: rows.map(v => ({
+        id: v.sentence_id,
+        title: v.word,
+        hot: v.hot_value,
+        timestamp: v.event_time,
+        url: `https://www.douyin.com/hot/${v.sentence_id}`
+      }))
+    };
+  }
+
+  throw new Error('no direct fallback');
 }
 
 export async function collectDailyHot(env, sourceId) {
@@ -43,15 +125,22 @@ export async function collectDailyHot(env, sourceId) {
 
   for (const base of upstreamBases(env)) {
     try {
-      ({ body, list } = await fetchFromUpstream(base, sourceId));
-      upstream = base;
+      ({ body, list, upstream } = await fetchFromUpstream(base, sourceId));
       break;
     } catch (err) {
       errors.push(`${base}: ${String(err?.message || err)}`);
     }
   }
 
-  if (!list) throw new Error(`${sourceId}: all DailyHot upstreams failed (${errors.join('; ')})`);
+  if (!list && ['weibo', 'zhihu', 'douyin'].includes(sourceId)) {
+    try {
+      ({ body, list, upstream } = await fetchDirect(sourceId));
+    } catch (err) {
+      errors.push(`direct: ${String(err?.message || err)}`);
+    }
+  }
+
+  if (!list) throw new Error(`${sourceId}: all real upstreams failed (${errors.join('; ')})`);
 
   const capturedAt = new Date().toISOString();
   return list.slice(0, 50).map((item, i) => {
