@@ -22,6 +22,15 @@ async function debugStatus(env) {
   const status = {
     db: Boolean(env.DB),
     schema: { ok: false, error: null, tables: {} },
+    ai: {
+      binding: Boolean(env.AI),
+      model: env.AI_MODEL || '@cf/zai-org/glm-4.7-flash',
+      eligible_topics: null,
+      verified_topics: null,
+      pending_topics: null,
+      stale_topics: null,
+      last_updated_at: null
+    },
     ready: false,
     raw_items: null,
     topics: null,
@@ -56,14 +65,27 @@ async function debugStatus(env) {
   }
 
   try {
-    const [raw, topics, sources, healthy, failed, lastSuccess, errors] = await Promise.all([
+    const [raw, topics, sources, healthy, failed, lastSuccess, errors, aiEligible, aiVerified, aiStale, aiLastUpdated] = await Promise.all([
       env.DB.prepare('SELECT COUNT(*) as count FROM raw_items').first(),
       env.DB.prepare('SELECT COUNT(*) as count FROM topics').first(),
       env.DB.prepare('SELECT COUNT(*) as count FROM sources').first(),
       env.DB.prepare(`SELECT COUNT(*) as count FROM sources WHERE last_success_at IS NOT NULL AND (last_error_at IS NULL OR last_success_at >= last_error_at)`).first(),
       env.DB.prepare(`SELECT COUNT(*) as count FROM sources WHERE last_error_at IS NOT NULL AND (last_success_at IS NULL OR last_error_at > last_success_at)`).first(),
       env.DB.prepare('SELECT MAX(last_success_at) as value FROM sources').first(),
-      env.DB.prepare(`SELECT id,last_error,last_error_at FROM sources WHERE last_error IS NOT NULL ORDER BY last_error_at DESC LIMIT 6`).all()
+      env.DB.prepare(`SELECT id,last_error,last_error_at FROM sources WHERE last_error IS NOT NULL ORDER BY last_error_at DESC LIMIT 6`).all(),
+      env.DB.prepare(`SELECT COUNT(*) as count FROM topics WHERE current_score >= 45`).first(),
+      env.DB.prepare(`SELECT COUNT(*) as count FROM topics
+        WHERE current_score >= 45
+          AND ai_updated_at IS NOT NULL
+          AND length(trim(COALESCE(ai_summary,''))) >= 20
+          AND length(trim(COALESCE(ai_why_now,''))) >= 20
+          AND ai_opportunities_json IS NOT NULL AND ai_opportunities_json != '[]'
+          AND ai_summary NOT LIKE '%值得关注%' AND ai_summary NOT LIKE '%热度较高%' AND ai_summary NOT LIKE '%持续升温%'
+          AND ai_summary NOT LIKE '%具有重要意义%' AND ai_summary NOT LIKE '%前景广阔%' AND ai_summary NOT LIKE '%机会巨大%'
+          AND ai_why_now NOT LIKE '%值得关注%' AND ai_why_now NOT LIKE '%热度较高%' AND ai_why_now NOT LIKE '%持续升温%'
+          AND ai_why_now NOT LIKE '%具有重要意义%' AND ai_why_now NOT LIKE '%前景广阔%' AND ai_why_now NOT LIKE '%机会巨大%'`).first(),
+      env.DB.prepare(`SELECT COUNT(*) as count FROM topics WHERE current_score >= 45 AND ai_updated_at IS NOT NULL AND julianday(ai_updated_at) < julianday('now','-6 hours')`).first(),
+      env.DB.prepare(`SELECT MAX(ai_updated_at) as value FROM topics WHERE ai_updated_at IS NOT NULL`).first()
     ]);
 
     status.raw_items = Number(raw?.count || 0);
@@ -73,6 +95,11 @@ async function debugStatus(env) {
     status.failed_sources = Number(failed?.count || 0);
     status.last_success_at = lastSuccess?.value || null;
     status.recent_errors = errors?.results || [];
+    status.ai.eligible_topics = Number(aiEligible?.count || 0);
+    status.ai.verified_topics = Number(aiVerified?.count || 0);
+    status.ai.pending_topics = Math.max(0, status.ai.eligible_topics - status.ai.verified_topics);
+    status.ai.stale_topics = Number(aiStale?.count || 0);
+    status.ai.last_updated_at = aiLastUpdated?.value || null;
     status.ready = status.raw_items > 0 && status.topics > 0 && status.healthy_sources > 0;
   } catch (err) {
     status.error = String(err?.message || err);
