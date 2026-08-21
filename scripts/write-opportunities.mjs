@@ -8,8 +8,18 @@ if (dashboard.preview !== false || dashboard.ready !== true) {
   throw new Error('opportunities require real dashboard');
 }
 
+function usableAI(topic) {
+  const summary = String(topic.ai_summary || '').trim();
+  const why = String(topic.ai_why_now || '').trim();
+  const ideas = Array.isArray(topic.opportunities) ? topic.opportunities : [];
+  if (!summary || !why || ideas.length < 1) return false;
+  if (summary.includes('正在进入活跃讨论区间，可结合来源扩散和热度增速判断是否形成持续趋势')) return false;
+  if (why.includes('当前综合热度') && why.includes('突破指数') && why.includes('覆盖')) return false;
+  return ideas.every(i => String(i.idea || '').trim() && String(i.rationale || '').trim());
+}
+
 const topics = [...(dashboard.topics || [])]
-  .filter(t => t.ai_summary && Array.isArray(t.opportunities) && t.opportunities.length)
+  .filter(usableAI)
   .sort((a,b) => Number(b.breakout_score||0)-Number(a.breakout_score||0))
   .slice(0,5);
 
@@ -36,4 +46,4 @@ const payload = {
 };
 
 await writeFile(outputPath, JSON.stringify(payload, null, 2) + '\n');
-console.log(`Wrote ${opportunities.length} opportunities`);
+console.log(`Wrote ${opportunities.length} quality-filtered opportunities`);
