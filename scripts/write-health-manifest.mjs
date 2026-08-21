@@ -21,21 +21,45 @@ for (const topic of topics) {
   }
 }
 
-const requiredDirect = REQUIRED_DIRECT_CN.map(id => {
-  const source = sources.find(item => item?.id === id);
+function sourceHealthRow(source) {
+  const lastSuccessAt = source?.last_success_at || null;
+  const successMs = lastSuccessAt ? Date.parse(lastSuccessAt) : NaN;
+  const generatedMs = dashboard.generatedAt ? Date.parse(dashboard.generatedAt) : NaN;
+  const freshnessSeconds = Number.isFinite(successMs) && Number.isFinite(generatedMs)
+    ? Math.max(0, Math.round((generatedMs - successMs) / 1000))
+    : null;
   return {
-    id,
-    healthy: Boolean(source?.last_success_at && Number(source?.last_item_count || 0) > 0),
+    id: source?.id || null,
+    name: source?.name || null,
+    healthy: Boolean(lastSuccessAt && Number(source?.last_item_count || 0) > 0),
     kind: source?.kind || null,
     region: source?.region || null,
     itemCount: Number(source?.last_item_count || 0),
-    topicRefs: Number(topicRefsBySource.get(id) || 0),
-    lastSuccessAt: source?.last_success_at || null
+    topicRefs: Number(topicRefsBySource.get(source?.id) || 0),
+    lastSuccessAt,
+    lastErrorAt: source?.last_error_at || null,
+    lastError: source?.last_error || null,
+    freshnessSeconds
   };
+}
+
+const sourceHealth = sources.map(sourceHealthRow);
+const requiredDirect = REQUIRED_DIRECT_CN.map(id => sourceHealth.find(item => item.id === id) || {
+  id,
+  name: null,
+  healthy: false,
+  kind: null,
+  region: null,
+  itemCount: 0,
+  topicRefs: 0,
+  lastSuccessAt: null,
+  lastErrorAt: null,
+  lastError: 'missing source row',
+  freshnessSeconds: null
 });
 
 const manifest = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   generatedAt: dashboard.generatedAt || null,
   buildSha: dashboard.buildSha || null,
   preview: dashboard.preview,
@@ -43,6 +67,8 @@ const manifest = {
   topicCount: topics.length,
   sourceCount: sources.length,
   healthySourceCount: healthySources.length,
+  degradedSourceCount: sourceHealth.filter(source => !source.healthy).length,
+  sourceHealth,
   requiredDirect
 };
 
