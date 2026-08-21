@@ -20,11 +20,17 @@ const panel = `
 (async()=>{
  try{
   const r=await fetch('data/opportunities.json',{cache:'no-store'});
+  if(!r.ok) throw new Error('HTTP '+r.status);
   const d=await r.json();
   const box=document.getElementById('ai-opportunities-content');
-  if(d.status!=='healthy'||!d.opportunities?.length){box.textContent='AI 洞察暂不可用，真实趋势数据正常';return;}
+  if(d.status!=='healthy'||!Array.isArray(d.opportunities)||!d.opportunities.length){
+    box.textContent='AI 洞察暂不可用，真实趋势数据正常';
+    return;
+  }
   box.innerHTML=d.opportunities.slice(0,5).map(o=>
-   '<div class="trend"><b>'+((o.title||o.topic||'机会'))+'</b><div class="summary">'+(o.whyNow||o.why_now||'')+'</div></div>'
+    '<div class="trend"><b>'+((o.title||o.topic||o.idea||'机会'))+'</b>'+
+    '<div class="summary">为什么现在：'+(o.whyNow||o.why_now||o.rationale||'暂无')+'</div>'+
+    '<div class="summary">'+(o.businessOpportunity||o.business_opportunity||o.technicalOpportunity||o.technical_opportunity||'')+'</div></div>'
   ).join('');
  }catch(e){
   document.getElementById('ai-opportunities-content').textContent='AI 洞察暂不可用，真实趋势数据正常';
