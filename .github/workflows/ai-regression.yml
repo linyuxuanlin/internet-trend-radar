@@ -12,6 +12,8 @@ jobs:
 
       - name: Validate regression analyzer deterministically
         run: |
+          node scripts/validate-ai-quota-circuit.mjs
+
           cat > /tmp/ai-debug-good.json <<'JSON'
           {
             "generatedAt":"2026-08-22T14:00:00.000Z",
@@ -24,7 +26,7 @@ jobs:
               "recent_successes_1h":12,
               "recent_failures_1h":8,
               "recent_failure_reasons_1h":[
-                {"reason":"inference-error:invalid-request:AiError","count":3,"last_at":"2026-08-22T13:59:00.000Z"},
+                {"reason":"inference-error:invalid-request:AiError:max_tokens_must_be_less_than_2048","count":3,"last_at":"2026-08-22T13:59:00.000Z"},
                 {"reason":"empty-model-response","count":5,"last_at":"2026-08-22T13:58:00.000Z"}
               ],
               "model_stats_1h":[{"model":"@cf/meta/llama-3.3-70b-instruct-fp8-fast","attempts":20,"successes":12,"failures":8,"success_rate":60}]
@@ -39,7 +41,7 @@ jobs:
               "recent_attempts_1h":20,
               "recent_successes_1h":1,
               "recent_failures_1h":19,
-              "recent_failure_reasons_1h":[{"reason":"inference-error:invalid-request:AiError","count":15}],
+              "recent_failure_reasons_1h":[{"reason":"inference-error:invalid-request:AiError:unsupported_response_format","count":15}],
               "model_stats_1h":[]
             }
           }

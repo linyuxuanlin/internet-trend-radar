@@ -17,6 +17,30 @@ function number(value) {
   return Number.isFinite(Number(value)) ? Number(value) : 0;
 }
 
+function fingerprintFromReason(reason) {
+  const value = String(reason || '');
+  const match = value.match(/(?:inference-error|fallback-inference-error):(invalid-request|unknown):[^:]+:(.+)$/);
+  return match ? `${match[1]}:${match[2]}` : null;
+}
+
+function summarizeFingerprints(reasons) {
+  const byFingerprint = new Map();
+  for (const row of Array.isArray(reasons) ? reasons : []) {
+    const fingerprint = fingerprintFromReason(row?.reason);
+    if (!fingerprint) continue;
+    const count = number(row?.count);
+    const existing = byFingerprint.get(fingerprint) || { fingerprint, count: 0, last_at: null, reasons: [] };
+    existing.count += count;
+    if (!existing.last_at || (row?.last_at && row.last_at > existing.last_at)) existing.last_at = row?.last_at || existing.last_at;
+    existing.reasons.push(String(row?.reason || 'unknown'));
+    byFingerprint.set(fingerprint, existing);
+  }
+  return [...byFingerprint.values()]
+    .map(item => ({ ...item, reasons: [...new Set(item.reasons)].slice(0, 3) }))
+    .sort((a, b) => b.count - a.count || a.fingerprint.localeCompare(b.fingerprint))
+    .slice(0, 8);
+}
+
 function summarize(ai) {
   const attempts = number(ai.recent_attempts_1h);
   const successes = number(ai.recent_successes_1h);
@@ -38,6 +62,7 @@ function summarize(ai) {
     invalid_request_rate: attempts ? Math.round((invalidRequests / attempts) * 1000) / 1000 : 0,
     unknown_failure_count: unknown,
     dominant_failure: dominant ? { reason: dominant.reason || 'unknown', count: number(dominant.count), last_at: dominant.last_at || null } : null,
+    top_error_fingerprints: summarizeFingerprints(reasons),
     model_stats_1h: Array.isArray(ai.model_stats_1h) ? ai.model_stats_1h : []
   };
 }

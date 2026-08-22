@@ -92,7 +92,7 @@ function classifyInferenceError(err, prefix = 'inference-error') {
   const message = messages.join(' ').toLowerCase();
   let kind = 'unknown';
   if (/rate.?limit|too many requests|429/.test(message) || rawCode === '429') kind = 'rate-limit';
-  else if (/quota|limit exceeded|capacity/.test(message)) kind = 'quota-or-capacity';
+  else if (/quota|limit exceeded|capacity|used up.*(?:daily|free).*allocation|daily free allocation|neurons/.test(message)) kind = 'quota-or-capacity';
   else if (/unauthori[sz]ed|forbidden|permission|authentication|401|403/.test(message) || ['401', '403'].includes(rawCode)) kind = 'auth-or-permission';
   else if (/model.*not found|unknown model|does not exist|404/.test(message) || rawCode === '404') kind = 'model-not-found';
   else if (/timeout|timed out|deadline|abort/.test(message)) kind = 'timeout';
@@ -105,7 +105,7 @@ function classifyInferenceError(err, prefix = 'inference-error') {
 }
 
 function isRecoverableInferenceFailure(reason) {
-  return /^inference-error:(rate-limit|quota-or-capacity|model-not-found|timeout|upstream|unknown)(?::|$)/.test(String(reason || ''));
+  return /^inference-error:(rate-limit|model-not-found|timeout|upstream|unknown)(?::|$)/.test(String(reason || ''));
 }
 
 export function isStoredAIValid(topic) {
@@ -285,6 +285,31 @@ const INVALID_STORED_AI_SQL = `(
   OR ai_why_now LIKE '%具有重要意义%' OR ai_why_now LIKE '%前景广阔%' OR ai_why_now LIKE '%机会巨大%'
 )`;
 
+async function dailyQuotaCircuit(env) {
+  if (!env.DB || env.AI_DISABLE_QUOTA_CIRCUIT === '1') return null;
+  try {
+    const row = await env.DB.prepare(`
+      SELECT attempted_at, failure_reason FROM ai_attempts
+      WHERE success=0
+        AND (failure_reason LIKE 'inference-error:quota-or-capacity%' OR failure_reason LIKE 'fallback-inference-error:quota-or-capacity%')
+        AND substr(attempted_at,1,10)=substr(datetime('now'),1,10)
+      ORDER BY attempted_at DESC LIMIT 1
+    `).first();
+    if (!row?.attempted_at) return null;
+    const nextUtcDay = new Date();
+    nextUtcDay.setUTCHours(24, 0, 0, 0);
+    return {
+      reason: 'daily-ai-quota-exhausted',
+      detectedAt: row.attempted_at,
+      retryAfter: nextUtcDay.toISOString(),
+      failureReason: row.failure_reason || 'inference-error:quota-or-capacity'
+    };
+  } catch (err) {
+    console.warn('AI quota circuit probe failed', err);
+    return null;
+  }
+}
+
 export async function enrichTopTopics(env, options = {}) {
   const topN = Math.max(1, Math.min(20, Number(options.topN || env.AI_TOP_N || 8)));
   const retryMinutes = Math.max(5, Math.min(360, Number(env.AI_RETRY_MINUTES || 30)));
@@ -292,6 +317,24 @@ export async function enrichTopTopics(env, options = {}) {
   const backfillOnly = options.backfillOnly === true;
   const retryModifier = `-${retryMinutes} minutes`;
   const refreshModifier = `-${refreshHours} hours`;
+
+  const quotaCircuit = await dailyQuotaCircuit(env);
+  if (quotaCircuit) {
+    return {
+      updated: 0,
+      failed: 0,
+      selected: 0,
+      failureReasons: {},
+      backfillOnly,
+      retryMinutes,
+      refreshHours,
+      skipped: true,
+      skipReason: quotaCircuit.reason,
+      quotaDetectedAt: quotaCircuit.detectedAt,
+      retryAfter: quotaCircuit.retryAfter,
+      quotaFailureReason: quotaCircuit.failureReason
+    };
+  }
 
   const candidateSql = backfillOnly
     ? `
