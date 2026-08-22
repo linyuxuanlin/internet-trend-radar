@@ -336,13 +336,23 @@ export async function enrichTopTopics(env, options = {}) {
     };
   }
 
+  // Under a finite daily Workers AI budget, spend inference first on topics that are still
+  // actively moving. Old backlog remains eligible, but cannot outrank a fresh breakout solely
+  // because it once had a larger score.
+  const freshnessPrioritySql = `CASE
+    WHEN julianday(last_seen_at) >= julianday('now','-6 hours') THEN 0
+    WHEN julianday(last_seen_at) >= julianday('now','-24 hours') THEN 1
+    ELSE 2
+  END`;
+
   const candidateSql = backfillOnly
     ? `
       SELECT * FROM topics
       WHERE current_score >= 45
         AND ${INVALID_STORED_AI_SQL}
         AND (ai_updated_at IS NULL OR julianday(ai_updated_at) < julianday('now', ?))
-      ORDER BY CASE WHEN ai_updated_at IS NULL THEN 0 ELSE 1 END, breakout_score DESC, current_score DESC
+      ORDER BY ${freshnessPrioritySql}, CASE WHEN ai_updated_at IS NULL THEN 0 ELSE 1 END,
+        breakout_score DESC, current_score DESC, source_count DESC, last_seen_at DESC
       LIMIT ?`
     : `
       SELECT * FROM topics
@@ -351,7 +361,9 @@ export async function enrichTopTopics(env, options = {}) {
           (${INVALID_STORED_AI_SQL} AND (ai_updated_at IS NULL OR julianday(ai_updated_at) < julianday('now', ?)))
           OR (NOT ${INVALID_STORED_AI_SQL} AND ai_updated_at IS NOT NULL AND julianday(ai_updated_at) < julianday('now', ?))
         )
-      ORDER BY CASE WHEN ${INVALID_STORED_AI_SQL} THEN 0 ELSE 1 END, CASE WHEN ai_updated_at IS NULL THEN 0 ELSE 1 END, breakout_score DESC, current_score DESC
+      ORDER BY CASE WHEN ${INVALID_STORED_AI_SQL} THEN 0 ELSE 1 END, ${freshnessPrioritySql},
+        CASE WHEN ai_updated_at IS NULL THEN 0 ELSE 1 END, breakout_score DESC, current_score DESC,
+        source_count DESC, last_seen_at DESC
       LIMIT ?`;
 
   const stmt = env.DB.prepare(candidateSql);
