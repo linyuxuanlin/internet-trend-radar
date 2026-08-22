@@ -256,7 +256,19 @@ export default {
         await sendDailyDigest(env);
         return;
       }
-      await collectAll(env);
+      const collection = await collectAll(env);
+      if (!env.AI) {
+        console.warn('scheduled AI backfill skipped: missing AI binding');
+        return { collection, ai: { skipped: true, reason: 'missing-ai-binding' } };
+      }
+      try {
+        const ai = await enrichTopTopics(env, { backfillOnly: true });
+        console.log('scheduled AI backfill', ai);
+        return { collection, ai };
+      } catch (err) {
+        console.error('scheduled AI backfill failed; real collection already completed', err);
+        return { collection, ai: { failed: true, error: String(err?.message || err) } };
+      }
     })().catch(err => console.error('scheduled job failed', err)));
   }
 };
