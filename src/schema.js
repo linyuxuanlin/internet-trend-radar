@@ -1,6 +1,4 @@
 const SCHEMA_SQL = `
-PRAGMA foreign_keys = ON;
-
 CREATE TABLE IF NOT EXISTS sources (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -120,6 +118,11 @@ INSERT OR IGNORE INTO sources(id,name,region,kind) VALUES
 ('xiaohongshu','小红书','cn','external-bridge');
 `;
 
+// Cloudflare D1 already enforces foreign keys for every query. Do not prepend
+// `PRAGMA foreign_keys = ON` here: D1 runs queries in implicit transactions and
+// does not allow user code to toggle that setting in a query/migration. If that
+// PRAGMA fails at the start of db.exec(), none of the CREATE TABLE statements run.
+//
 // A Worker isolate can observe more than one DB mock/binding over its lifetime in tests,
 // previews, or multi-environment reuse. Cache per D1 binding rather than globally so a
 // successful bootstrap for one binding can never suppress schema initialization for another.
