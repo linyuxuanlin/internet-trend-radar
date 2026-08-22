@@ -8,6 +8,24 @@ function extractJson(text) {
   return m ? safeJsonParse(m[0], null) : null;
 }
 
+function extractModelPayload(out) {
+  const candidates = [
+    out?.response,
+    out?.result?.response,
+    out?.choices?.[0]?.message?.content
+  ];
+  for (const value of candidates) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return { parsed: value, rawText: JSON.stringify(value) };
+    }
+    if (String(value || '').trim()) {
+      const rawText = String(value);
+      return { parsed: extractJson(rawText), rawText };
+    }
+  }
+  return { parsed: null, rawText: '' };
+}
+
 function hasLowValuePhrase(text) {
   return /值得关注|热度较高|持续升温|具有重要意义|前景广阔|机会巨大/.test(String(text || ''));
 }
@@ -44,6 +62,83 @@ function normalizeAnalysis(parsed, model, topicTitle) {
   return { analysis: { summary, why_now: whyNow, opportunities, risks }, failureReason: null };
 }
 
+const AI_RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    summary: { type: 'string' },
+    why_now: { type: 'string' },
+    opportunities: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 3,
+      items: {
+        type: 'object',
+        properties: {
+          type: { type: 'string' },
+          idea: { type: 'string' },
+          rationale: { type: 'string' },
+          difficulty: { type: 'string' },
+          time_to_market: { type: 'string' },
+          confidence: { type: 'number' }
+        },
+        required: ['idea', 'rationale']
+      }
+    },
+    risks: { type: 'string' }
+  },
+  required: ['summary', 'why_now', 'opportunities', 'risks']
+};
+
+const FALLBACK_REASONS = new Set([
+  'invalid-json',
+  'incomplete-output',
+  'too-short',
+  'low-value-language',
+  'title-echo',
+  'empty-model-response'
+]);
+
+function buildPrompt(topic, evidence) {
+  return `你是互联网趋势分析师和产品机会研究员。基于真实证据分析热点。
+不要复述标题，不要写新闻摘要模板，不要把热度等同于商业价值。
+
+主题：${topic.canonical_title}
+分类：${topic.category}
+综合热度：${topic.current_score}
+突破指数：${topic.breakout_score}
+来源数：${topic.source_count}
+证据：${evidence.map(x => `${x.source_id} #${x.rank || '-'} ${x.title}`).join('\n')}
+
+只输出 JSON：
+{"summary":"发生了什么，说明事件本质而不是标题改写","why_now":"为什么现在发生，引用可观察信号（时间、来源、热度变化等）","opportunities":[{"type":"内容|工具|服务|电商|投资观察","idea":"具体谁可以做什么","rationale":"为什么存在需求和验证路径","difficulty":"低|中|高","time_to_market":"当天|1-3天|1周+","confidence":0}],"risks":"主要风险和如何验证"}
+
+禁止：值得关注、热度很高、前景广阔等空泛表达。`;
+}
+
+async function runModel(env, model, topic, evidence, { structured = false } = {}) {
+  const request = {
+    messages: [
+      { role: 'system', content: '严格基于证据，不捏造事实，不承诺收益。' },
+      { role: 'user', content: buildPrompt(topic, evidence) }
+    ],
+    max_completion_tokens: 900,
+    temperature: structured ? 0.1 : 0.2
+  };
+  if (structured) {
+    request.response_format = {
+      type: 'json_schema',
+      json_schema: AI_RESPONSE_SCHEMA
+    };
+  }
+  const out = await env.AI.run(model, request);
+  const payload = extractModelPayload(out);
+  if (!payload.rawText) {
+    return { analysis: null, failureReason: 'empty-model-response', rawText: '', model };
+  }
+  const normalized = normalizeAnalysis(payload.parsed, model, topic.canonical_title);
+  return { ...normalized, rawText: payload.rawText, model };
+}
+
 async function recordAttempt(env, topicId, model, result) {
   if (!env.DB) return;
   const excerpt = String(result?.rawText || '').replace(/\s+/g, ' ').slice(0, 600) || null;
@@ -67,33 +162,29 @@ async function recordAttempt(env, topicId, model, result) {
 export async function analyzeTopicDetailed(env, topic, evidence) {
   if (!env.AI) return { analysis: null, failureReason: 'missing-ai-binding', rawText: '', model: null };
   const model = env.AI_MODEL || '@cf/zai-org/glm-4.7-flash';
-  const prompt = `你是互联网趋势分析师和产品机会研究员。基于真实证据分析热点。
-不要复述标题，不要写新闻摘要模板，不要把热度等同于商业价值。
-
-主题：${topic.canonical_title}
-分类：${topic.category}
-综合热度：${topic.current_score}
-突破指数：${topic.breakout_score}
-来源数：${topic.source_count}
-证据：${evidence.map(x => `${x.source_id} #${x.rank || '-'} ${x.title}`).join('\n')}
-
-只输出 JSON：
-{"summary":"发生了什么，说明事件本质而不是标题改写","why_now":"为什么现在发生，引用可观察信号（时间、来源、热度变化等）","opportunities":[{"type":"内容|工具|服务|电商|投资观察","idea":"具体谁可以做什么","rationale":"为什么存在需求和验证路径","difficulty":"低|中|高","time_to_market":"当天|1-3天|1周+","confidence":0}],"risks":"主要风险和如何验证"}
-
-禁止：值得关注、热度很高、前景广阔等空泛表达。`;
   try {
-    const out = await env.AI.run(model, {
-      messages: [
-        { role: 'system', content: '严格基于证据，不捏造事实，不承诺收益。' },
-        { role: 'user', content: prompt }
-      ],
-      max_completion_tokens: 900,
-      temperature: 0.2
-    });
-    const rawText = out?.response || out?.result?.response || out?.choices?.[0]?.message?.content || '';
-    if (!String(rawText).trim()) return { analysis: null, failureReason: 'empty-model-response', rawText: '', model };
-    const normalized = normalizeAnalysis(extractJson(rawText), model, topic.canonical_title);
-    return { ...normalized, rawText, model };
+    const primary = await runModel(env, model, topic, evidence);
+    if (primary.analysis || !FALLBACK_REASONS.has(primary.failureReason) || env.AI_DISABLE_FALLBACK === '1') return primary;
+
+    const fallbackModel = env.AI_FALLBACK_MODEL || '@cf/meta/llama-3.1-8b-instruct-fast';
+    try {
+      const fallback = await runModel(env, fallbackModel, topic, evidence, { structured: true });
+      return {
+        ...fallback,
+        rawText: fallback.rawText || primary.rawText,
+        primaryFailureReason: primary.failureReason,
+        fallbackUsed: true
+      };
+    } catch (fallbackErr) {
+      const fallbackCode = String(fallbackErr?.code || fallbackErr?.name || '').trim();
+      return {
+        ...primary,
+        failureReason: fallbackCode ? `fallback-inference-error:${fallbackCode}` : 'fallback-inference-error',
+        rawText: String(fallbackErr?.message || fallbackErr).slice(0, 600) || primary.rawText,
+        primaryFailureReason: primary.failureReason,
+        fallbackUsed: true
+      };
+    }
   } catch (err) {
     console.error('AI analysis failed', err);
     const code = String(err?.code || err?.name || '').trim();
