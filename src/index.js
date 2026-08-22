@@ -53,6 +53,31 @@ function captureBootstrapError(schemaStatus, err) {
   schemaStatus.bootstrap_cause = err?.causeMessage || String(err?.cause?.message || '') || null;
 }
 
+function summarizeModelAttempts(rows) {
+  const byModel = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const model = String(row?.model || 'unknown');
+    const reason = String(row?.reason || 'unknown');
+    const count = Number(row?.count || 0);
+    if (!byModel.has(model)) byModel.set(model, { model, attempts: 0, successes: 0, failures: 0, success_rate: 0, last_at: null, failure_reasons: [] });
+    const item = byModel.get(model);
+    item.attempts += count;
+    if (reason === 'success') item.successes += count;
+    else {
+      item.failures += count;
+      item.failure_reasons.push({ reason, count, last_at: row?.last_at || null });
+    }
+    if (!item.last_at || (row?.last_at && row.last_at > item.last_at)) item.last_at = row?.last_at || item.last_at;
+  }
+  return [...byModel.values()]
+    .map(item => ({
+      ...item,
+      success_rate: item.attempts ? Math.round((item.successes / item.attempts) * 1000) / 10 : 0,
+      failure_reasons: item.failure_reasons.sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason)).slice(0, 6)
+    }))
+    .sort((a, b) => b.attempts - a.attempts || a.model.localeCompare(b.model));
+}
+
 async function debugStatus(env) {
   const status = {
     db: Boolean(env.DB),
@@ -83,7 +108,8 @@ async function debugStatus(env) {
       recent_attempts_24h: 0,
       recent_successes_24h: 0,
       recent_failures_24h: 0,
-      recent_failure_reasons: []
+      recent_failure_reasons: [],
+      model_stats_24h: []
     },
     ready: false,
     raw_items: null,
@@ -137,7 +163,10 @@ async function debugStatus(env) {
     const attemptReasonsProbe = Promise.resolve()
       .then(() => env.DB.prepare(`SELECT CASE WHEN success=1 THEN 'success' ELSE COALESCE(failure_reason,'unknown') END AS reason, COUNT(*) AS count, MAX(attempted_at) AS last_at FROM ai_attempts WHERE julianday(attempted_at) >= julianday('now','-24 hours') GROUP BY reason ORDER BY count DESC, reason ASC`).all())
       .catch(() => ({ results: [] }));
-    const [raw, topics, sources, healthy, failed, lastSuccess, errors, aiEligible, aiAttempted, aiVerified, aiStale, aiLastUpdated, aiAttemptReasons] = await Promise.all([
+    const modelReasonsProbe = Promise.resolve()
+      .then(() => env.DB.prepare(`SELECT model, CASE WHEN success=1 THEN 'success' ELSE COALESCE(failure_reason,'unknown') END AS reason, COUNT(*) AS count, MAX(attempted_at) AS last_at FROM ai_attempts WHERE julianday(attempted_at) >= julianday('now','-24 hours') GROUP BY model, reason ORDER BY model ASC, count DESC, reason ASC`).all())
+      .catch(() => ({ results: [] }));
+    const [raw, topics, sources, healthy, failed, lastSuccess, errors, aiEligible, aiAttempted, aiVerified, aiStale, aiLastUpdated, aiAttemptReasons, aiModelReasons] = await Promise.all([
       env.DB.prepare('SELECT COUNT(*) as count FROM raw_items').first(),
       env.DB.prepare('SELECT COUNT(*) as count FROM topics').first(),
       env.DB.prepare('SELECT COUNT(*) as count FROM sources').first(),
@@ -159,7 +188,8 @@ async function debugStatus(env) {
           AND ai_why_now NOT LIKE '%具有重要意义%' AND ai_why_now NOT LIKE '%前景广阔%' AND ai_why_now NOT LIKE '%机会巨大%'`).first(),
       env.DB.prepare(`SELECT COUNT(*) as count FROM topics WHERE current_score >= 45 AND ai_updated_at IS NOT NULL AND julianday(ai_updated_at) < julianday('now','-6 hours')`).first(),
       env.DB.prepare(`SELECT MAX(ai_updated_at) as value FROM topics WHERE ai_updated_at IS NOT NULL`).first(),
-      attemptReasonsProbe
+      attemptReasonsProbe,
+      modelReasonsProbe
     ]);
 
     status.raw_items = Number(raw?.count || 0);
@@ -185,6 +215,7 @@ async function debugStatus(env) {
       count: Number(row.count || 0),
       last_at: row.last_at || null
     }));
+    status.ai.model_stats_24h = summarizeModelAttempts(aiModelReasons?.results || []);
     status.ai.ready_for_inference = status.ai.binding && status.ai.eligible_topics > 0 && status.ai.pending_topics > 0;
     status.ai.blocked_reason = classifyAIBlocker(status.ai, true);
     status.ready = status.raw_items > 0 && status.topics > 0 && status.healthy_sources > 0;
