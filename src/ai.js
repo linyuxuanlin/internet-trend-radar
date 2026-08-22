@@ -132,6 +132,15 @@ async function runModel(env, model, topic, evidence, { structured = false } = {}
   return { ...normalized, rawText: payload.rawText, model };
 }
 
+function asAttempt(result) {
+  return {
+    model: result?.model || 'unknown',
+    analysis: result?.analysis || null,
+    failureReason: result?.failureReason || null,
+    rawText: result?.rawText || ''
+  };
+}
+
 async function recordAttempt(env, topicId, model, result) {
   if (!env.DB) return;
   const excerpt = String(result?.rawText || '').replace(/\s+/g, ' ').slice(0, 600) || null;
@@ -149,27 +158,37 @@ async function runStructuredFallback(env, topic, evidence, primary, primaryFailu
   const fallbackModel = env.AI_FALLBACK_MODEL || '@cf/meta/llama-3.1-8b-instruct-fast';
   try {
     const fallback = await runModel(env, fallbackModel, topic, evidence, { structured: true });
-    return { ...fallback, rawText: fallback.rawText || primary?.rawText || '', primaryFailureReason, fallbackUsed: true };
-  } catch (fallbackErr) {
     return {
+      ...fallback,
+      rawText: fallback.rawText || primary?.rawText || '',
+      primaryFailureReason,
+      fallbackUsed: true,
+      attemptTrace: [asAttempt(primary), asAttempt(fallback)]
+    };
+  } catch (fallbackErr) {
+    const fallback = {
       analysis: null,
       failureReason: classifyInferenceError(fallbackErr, 'fallback-inference-error'),
       rawText: String(fallbackErr?.message || fallbackErr).slice(0, 600) || primary?.rawText || '',
-      model: fallbackModel,
+      model: fallbackModel
+    };
+    return {
+      ...fallback,
       primaryFailureReason,
-      fallbackUsed: true
+      fallbackUsed: true,
+      attemptTrace: [asAttempt(primary), asAttempt(fallback)]
     };
   }
 }
 
 export async function analyzeTopicDetailed(env, topic, evidence) {
-  if (!env.AI) return { analysis: null, failureReason: 'missing-ai-binding', rawText: '', model: null };
+  if (!env.AI) return { analysis: null, failureReason: 'missing-ai-binding', rawText: '', model: null, attemptTrace: [] };
   const model = env.AI_MODEL || '@cf/zai-org/glm-4.7-flash';
   try {
     const primary = await runModel(env, model, topic, evidence);
-    if (primary.analysis || env.AI_DISABLE_FALLBACK === '1') return primary;
+    if (primary.analysis || env.AI_DISABLE_FALLBACK === '1') return { ...primary, attemptTrace: [asAttempt(primary)] };
     if (FALLBACK_REASONS.has(primary.failureReason)) return runStructuredFallback(env, topic, evidence, primary, primary.failureReason);
-    return primary;
+    return { ...primary, attemptTrace: [asAttempt(primary)] };
   } catch (err) {
     console.error('AI analysis failed', err);
     const primaryFailureReason = classifyInferenceError(err);
@@ -182,7 +201,7 @@ export async function analyzeTopicDetailed(env, topic, evidence) {
     if (env.AI_DISABLE_FALLBACK !== '1' && isRecoverableInferenceFailure(primaryFailureReason)) {
       return runStructuredFallback(env, topic, evidence, primary, primaryFailureReason);
     }
-    return primary;
+    return { ...primary, attemptTrace: [asAttempt(primary)] };
   }
 }
 
@@ -238,7 +257,8 @@ export async function enrichTopTopics(env, options = {}) {
   for (const topic of results) {
     const { results: evidence = [] } = await env.DB.prepare(`SELECT source_id,title,url,rank,captured_at FROM topic_sources WHERE topic_id=? ORDER BY captured_at DESC LIMIT 12`).bind(topic.id).all();
     const result = await analyzeTopicDetailed(env, topic, evidence);
-    await recordAttempt(env, topic.id, result.model || env.AI_MODEL || 'unknown', result);
+    const attempts = Array.isArray(result.attemptTrace) && result.attemptTrace.length ? result.attemptTrace : [asAttempt(result)];
+    for (const attempt of attempts) await recordAttempt(env, topic.id, attempt.model, attempt);
     const analysis = result.analysis;
     const now = new Date().toISOString();
     if (!analysis) {
