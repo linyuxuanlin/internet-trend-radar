@@ -79,7 +79,11 @@ async function debugStatus(env) {
       stale_topics: null,
       last_updated_at: null,
       ready_for_inference: false,
-      blocked_reason: null
+      blocked_reason: null,
+      recent_attempts_24h: 0,
+      recent_successes_24h: 0,
+      recent_failures_24h: 0,
+      recent_failure_reasons: []
     },
     ready: false,
     raw_items: null,
@@ -130,7 +134,10 @@ async function debugStatus(env) {
     const attemptedProbe = Promise.resolve()
       .then(() => env.DB.prepare(`SELECT COUNT(*) as count FROM topics WHERE current_score >= 45 AND ai_updated_at IS NOT NULL`).first())
       .catch(() => ({ count: null }));
-    const [raw, topics, sources, healthy, failed, lastSuccess, errors, aiEligible, aiAttempted, aiVerified, aiStale, aiLastUpdated] = await Promise.all([
+    const attemptReasonsProbe = Promise.resolve()
+      .then(() => env.DB.prepare(`SELECT CASE WHEN success=1 THEN 'success' ELSE COALESCE(failure_reason,'unknown') END AS reason, COUNT(*) AS count, MAX(attempted_at) AS last_at FROM ai_attempts WHERE julianday(attempted_at) >= julianday('now','-24 hours') GROUP BY reason ORDER BY count DESC, reason ASC`).all())
+      .catch(() => ({ results: [] }));
+    const [raw, topics, sources, healthy, failed, lastSuccess, errors, aiEligible, aiAttempted, aiVerified, aiStale, aiLastUpdated, aiAttemptReasons] = await Promise.all([
       env.DB.prepare('SELECT COUNT(*) as count FROM raw_items').first(),
       env.DB.prepare('SELECT COUNT(*) as count FROM topics').first(),
       env.DB.prepare('SELECT COUNT(*) as count FROM sources').first(),
@@ -151,7 +158,8 @@ async function debugStatus(env) {
           AND ai_why_now NOT LIKE '%值得关注%' AND ai_why_now NOT LIKE '%热度较高%' AND ai_why_now NOT LIKE '%持续升温%'
           AND ai_why_now NOT LIKE '%具有重要意义%' AND ai_why_now NOT LIKE '%前景广阔%' AND ai_why_now NOT LIKE '%机会巨大%'`).first(),
       env.DB.prepare(`SELECT COUNT(*) as count FROM topics WHERE current_score >= 45 AND ai_updated_at IS NOT NULL AND julianday(ai_updated_at) < julianday('now','-6 hours')`).first(),
-      env.DB.prepare(`SELECT MAX(ai_updated_at) as value FROM topics WHERE ai_updated_at IS NOT NULL`).first()
+      env.DB.prepare(`SELECT MAX(ai_updated_at) as value FROM topics WHERE ai_updated_at IS NOT NULL`).first(),
+      attemptReasonsProbe
     ]);
 
     status.raw_items = Number(raw?.count || 0);
@@ -168,6 +176,15 @@ async function debugStatus(env) {
     status.ai.pending_topics = Math.max(0, status.ai.eligible_topics - status.ai.verified_topics);
     status.ai.stale_topics = Number(aiStale?.count || 0);
     status.ai.last_updated_at = aiLastUpdated?.value || null;
+    const reasonRows = Array.isArray(aiAttemptReasons?.results) ? aiAttemptReasons.results : [];
+    status.ai.recent_attempts_24h = reasonRows.reduce((sum, row) => sum + Number(row.count || 0), 0);
+    status.ai.recent_successes_24h = reasonRows.filter(row => row.reason === 'success').reduce((sum, row) => sum + Number(row.count || 0), 0);
+    status.ai.recent_failures_24h = Math.max(0, status.ai.recent_attempts_24h - status.ai.recent_successes_24h);
+    status.ai.recent_failure_reasons = reasonRows.filter(row => row.reason !== 'success').slice(0, 8).map(row => ({
+      reason: row.reason || 'unknown',
+      count: Number(row.count || 0),
+      last_at: row.last_at || null
+    }));
     status.ai.ready_for_inference = status.ai.binding && status.ai.eligible_topics > 0 && status.ai.pending_topics > 0;
     status.ai.blocked_reason = classifyAIBlocker(status.ai, true);
     status.ready = status.raw_items > 0 && status.topics > 0 && status.healthy_sources > 0;
@@ -225,9 +242,6 @@ export default {
         }
       }
       await ensureInitialData(env);
-      // D1 may already contain real topics before the first successful cron after a schema repair.
-      // Start a small, deduplicated AI backlog batch in the background so dashboard traffic can
-      // self-heal `inference-not-run` without delaying the real-data response.
       queueAIBackfill(env, ctx);
     }
 
