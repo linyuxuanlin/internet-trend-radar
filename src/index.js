@@ -1,7 +1,10 @@
 import { routeApi } from './api.js';
 import { collectAll } from './collector.js';
+import { enrichTopTopics } from './ai.js';
 import { sendDailyDigest } from './email.js';
 import { ensureSchema } from './schema.js';
+
+const aiBackfillPromises = new WeakMap();
 
 async function ensureInitialData(env) {
   if (!env.DB) return { ok: false, reason: 'missing-db' };
@@ -16,6 +19,18 @@ async function ensureInitialData(env) {
     console.error('initial collection failed', err);
     return { ok: false, error: String(err?.message || err) };
   }
+}
+
+function queueAIBackfill(env, ctx) {
+  if (!env.DB || !env.AI || !ctx?.waitUntil) return false;
+  if (aiBackfillPromises.has(env.DB)) return false;
+  const promise = enrichTopTopics(env, { backfillOnly: true })
+    .then(result => console.log('dashboard AI backfill', result))
+    .catch(err => console.error('dashboard AI backfill failed', err))
+    .finally(() => aiBackfillPromises.delete(env.DB));
+  aiBackfillPromises.set(env.DB, promise);
+  ctx.waitUntil(promise);
+  return true;
 }
 
 function classifyAIBlocker(ai, schemaOk = true) {
@@ -84,10 +99,6 @@ async function debugStatus(env) {
     return status;
   }
 
-  // Diagnostics are also the safest place to repair an incomplete auto-provisioned D1:
-  // ensureSchema() is idempotent, and failures are captured rather than taking /api/debug down.
-  // This means the live CI probe can both expose the exact bootstrap failure and recover from
-  // a merely uninitialized database without requiring a privileged/manual migration endpoint.
   status.schema.bootstrap_attempted = true;
   try {
     await ensureSchema(env);
@@ -168,10 +179,9 @@ async function debugStatus(env) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // Debug/health must remain reachable even when D1 schema initialization is the failing dependency.
     if (url.pathname === '/api/debug') {
       return Response.json(await debugStatus(env));
     }
@@ -179,8 +189,6 @@ export default {
       return routeApi(env, request);
     }
 
-    // Non-dashboard APIs require D1 and should fail explicitly when schema bootstrap fails.
-    // The dashboard is handled separately below so its verified real Pages fallback stays available.
     if (url.pathname.startsWith('/api/') && env.DB && url.pathname !== '/api/dashboard') {
       try {
         await ensureSchema(env);
@@ -209,10 +217,6 @@ export default {
     }
 
     if (url.pathname === '/api/dashboard') {
-      // A freshly auto-provisioned D1 is empty. Bootstrap the schema before the first
-      // readiness query so the Worker can actually self-start and collect real data.
-      // If D1 itself is broken, keep the error non-fatal here: routeApi() can still
-      // serve the separately CI-gated GitHub Pages real snapshot fallback.
       if (env.DB) {
         try {
           await ensureSchema(env);
@@ -221,6 +225,10 @@ export default {
         }
       }
       await ensureInitialData(env);
+      // D1 may already contain real topics before the first successful cron after a schema repair.
+      // Start a small, deduplicated AI backlog batch in the background so dashboard traffic can
+      // self-heal `inference-not-run` without delaying the real-data response.
+      queueAIBackfill(env, ctx);
     }
 
     if (url.pathname.startsWith('/api/')) return routeApi(env, request);

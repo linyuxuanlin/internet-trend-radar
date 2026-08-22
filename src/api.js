@@ -1,5 +1,6 @@
 import { json, fingerprintTitle, safeJsonParse, categoryFor } from './utils.js';
 import { collectAll, ingestExternal } from './collector.js';
+import { isStoredAIValid } from './ai.js';
 
 const DEFAULT_REAL_DASHBOARD_FALLBACK = 'https://linyuxuanlin.github.io/internet-trend-radar/data/dashboard.json';
 
@@ -36,6 +37,19 @@ function notReady(error, extra = {}) {
     timeline: [],
     sources: [],
     ...extra
+  };
+}
+
+function publicTopic(topic) {
+  const opportunities = safeJsonParse(topic.ai_opportunities_json, []) || [];
+  if (isStoredAIValid(topic)) return { ...topic, opportunities };
+  return {
+    ...topic,
+    ai_summary: null,
+    ai_why_now: null,
+    ai_risks: null,
+    opportunities: [],
+    ai_verified: false
   };
 }
 
@@ -105,7 +119,7 @@ async function dashboard(env, url) {
 
     const { results: categories = [] } = await env.DB.prepare(`SELECT category,COUNT(*) count,ROUND(AVG(current_score),1) avg_score FROM topics GROUP BY category ORDER BY count DESC`).all();
     const { results: timeline = [] } = await env.DB.prepare(`SELECT substr(captured_at,1,13)||':00:00Z' t, ROUND(AVG(score),1) score, ROUND(AVG(breakout_score),1) breakout FROM topic_snapshots WHERE julianday(captured_at) >= julianday('now','-24 hours') GROUP BY t ORDER BY t`).all();
-    return json({ generatedAt: new Date().toISOString(), ready:true, preview:false, topics: topics.map(t => ({ ...t, opportunities: safeJsonParse(t.ai_opportunities_json, []) || [] })), sources, categories, timeline });
+    return json({ generatedAt: new Date().toISOString(), ready:true, preview:false, topics: topics.map(publicTopic), sources, categories, timeline });
   } catch (error) {
     console.error('dashboard real-data query failed', error);
     const fallback = await fetchRealDashboardFallback(env, category, `D1 dashboard query failed: ${String(error?.message || error)}`);
@@ -122,7 +136,7 @@ async function topicDetail(env, id) {
   if (!topic) return json({ error: 'not found' }, { status: 404 });
   const { results: sources = [] } = await env.DB.prepare(`SELECT source_id,title,url,rank,captured_at FROM topic_sources WHERE topic_id=? ORDER BY captured_at DESC LIMIT 50`).bind(id).all();
   const { results: snapshots = [] } = await env.DB.prepare(`SELECT captured_at,score,breakout_score,source_count,mention_count FROM topic_snapshots WHERE topic_id=? ORDER BY captured_at ASC LIMIT 96`).bind(id).all();
-  return json({ ...topic, opportunities: safeJsonParse(topic.ai_opportunities_json, []) || [], sources, snapshots });
+  return json({ ...publicTopic(topic), sources, snapshots });
 }
 
 async function subscribe(env, request) {
