@@ -14,6 +14,7 @@ assert(!isStoredAIValid({ ai_summary: '当前热度较高，值得关注后续�
 
 function makeBackfillDb({ validModelOutput }) {
   const updates = [];
+  const attempts = [];
   const binds = [];
   const topic = {
     id: 'topic-1', canonical_title: '测试真实趋势', category: '科技', current_score: 80, breakout_score: 75,
@@ -21,6 +22,7 @@ function makeBackfillDb({ validModelOutput }) {
   };
   return {
     updates,
+    attempts,
     binds,
     prepare(sql) {
       if (sql.includes('SELECT * FROM topics')) {
@@ -37,6 +39,15 @@ function makeBackfillDb({ validModelOutput }) {
           bind() { return this; },
           async all() { return { results: [{ source_id: 'v2ex', title: '测试真实趋势出现新进展', url: 'https://example.test/1', rank: 1, captured_at: new Date().toISOString() }] }; }
         };
+      }
+      if (sql.includes('INSERT INTO ai_attempts')) {
+        return {
+          bind(...args) { attempts.push(args); return this; },
+          async run() { return { success: true }; }
+        };
+      }
+      if (sql.includes('DELETE FROM ai_attempts')) {
+        return { async run() { return { success: true }; } };
       }
       if (sql.startsWith('UPDATE topics SET ai_updated_at=')) {
         return {
@@ -66,8 +77,11 @@ function makeBackfillDb({ validModelOutput }) {
   const fixture = makeBackfillDb({ validModelOutput: false });
   const result = await enrichTopTopics({ DB: fixture, AI: fixture.AI }, { backfillOnly: true });
   assert(result.selected === 1 && result.failed === 1 && result.updated === 0, `failed backfill result=${JSON.stringify(result)}`);
+  assert(result.failureReasons['incomplete-output'] === 1, `failure reasons=${JSON.stringify(result.failureReasons)}`);
   assert(fixture.updates.some(x => x.kind === 'retry'), 'failed low-quality AI must write a retry timestamp');
   assert(fixture.binds[0]?.[0] === '-30 minutes', `default retry modifier=${fixture.binds[0]?.[0]}`);
+  assert(fixture.attempts.length === 1, 'failed AI inference must persist one attempt diagnostic');
+  assert(fixture.attempts[0][3] === 0 && fixture.attempts[0][4] === 'incomplete-output', `failed attempt=${JSON.stringify(fixture.attempts[0])}`);
 }
 
 {
@@ -75,6 +89,7 @@ function makeBackfillDb({ validModelOutput }) {
   const result = await enrichTopTopics({ DB: fixture, AI: fixture.AI }, { backfillOnly: true });
   assert(result.selected === 1 && result.failed === 0 && result.updated === 1, `successful backfill result=${JSON.stringify(result)}`);
   assert(fixture.updates.some(x => x.kind === 'full'), 'valid AI must persist complete analysis');
+  assert(fixture.attempts.length === 1 && fixture.attempts[0][3] === 1 && fixture.attempts[0][4] === null, 'successful AI inference must persist a successful attempt');
 }
 
 const invalidTopic = {
@@ -103,4 +118,4 @@ const good = dashboard.topics.find(x => x.id === 'good-ai');
 assert(bad.ai_summary === null && bad.ai_why_now === null && bad.opportunities.length === 0 && bad.ai_verified === false, 'invalid historical AI must be hidden from public API');
 assert(good.ai_summary === goodSummary && good.opportunities.length === 1, 'valid AI must remain visible');
 
-console.log('AI backlog retry fairness and public quality gate validated');
+console.log('AI backlog retry fairness, attempt diagnostics, and public quality gate validated');
