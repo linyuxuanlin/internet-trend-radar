@@ -61,7 +61,7 @@ jobs:
           if (!Array.isArray(d.ai.model_stats_24h)) {
             console.log('::warning::Deployed Worker predates per-model AI diagnostics; this PR will expose model_stats_24h after deployment');
           }
-          const allowed = new Set([null,'missing-ai-and-db-binding','missing-db-binding','d1-schema-incomplete','d1-schema-probe-failed','missing-ai-binding','no-eligible-topics','inference-not-run','outputs-failed-quality-gate','partial-ai-coverage','ai-readiness-query-failed']);
+          const allowed = new Set([null,'missing-ai-and-db-binding','missing-db-binding','d1-schema-incomplete','d1-schema-probe-failed','missing-ai-binding','no-eligible-topics','inference-not-run','outputs-failed-quality-gate','partial-ai-coverage','daily-ai-quota-exhausted','ai-readiness-query-failed']);
           if (!allowed.has(d.ai.blocked_reason)) throw new Error(`unknown live blocker: ${d.ai.blocked_reason}`);
           const snapshot = {
             schema: d.schema ? {
