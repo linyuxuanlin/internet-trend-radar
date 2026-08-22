@@ -9,15 +9,9 @@ function extractJson(text) {
 }
 
 function extractModelPayload(out) {
-  const candidates = [
-    out?.response,
-    out?.result?.response,
-    out?.choices?.[0]?.message?.content
-  ];
+  const candidates = [out?.response, out?.result?.response, out?.choices?.[0]?.message?.content];
   for (const value of candidates) {
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      return { parsed: value, rawText: JSON.stringify(value) };
-    }
+    if (value && typeof value === 'object' && !Array.isArray(value)) return { parsed: value, rawText: JSON.stringify(value) };
     if (String(value || '').trim()) {
       const rawText = String(value);
       return { parsed: extractJson(rawText), rawText };
@@ -43,6 +37,10 @@ function classifyInferenceError(err, prefix = 'inference-error') {
   else if (/internal|upstream|gateway|service unavailable|502|503|504/.test(message) || ['502', '503', '504'].includes(rawCode)) kind = 'upstream';
   const code = rawCode && rawCode !== 'Error' ? rawCode.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 48) : null;
   return `${prefix}:${kind}${code ? `:${code}` : ''}`;
+}
+
+function isRecoverableInferenceFailure(reason) {
+  return /^inference-error:(rate-limit|quota-or-capacity|model-not-found|timeout|upstream|unknown)(?::|$)/.test(String(reason || ''));
 }
 
 export function isStoredAIValid(topic) {
@@ -83,18 +81,12 @@ const AI_RESPONSE_SCHEMA = {
     summary: { type: 'string' },
     why_now: { type: 'string' },
     opportunities: {
-      type: 'array',
-      minItems: 1,
-      maxItems: 3,
+      type: 'array', minItems: 1, maxItems: 3,
       items: {
         type: 'object',
         properties: {
-          type: { type: 'string' },
-          idea: { type: 'string' },
-          rationale: { type: 'string' },
-          difficulty: { type: 'string' },
-          time_to_market: { type: 'string' },
-          confidence: { type: 'number' }
+          type: { type: 'string' }, idea: { type: 'string' }, rationale: { type: 'string' },
+          difficulty: { type: 'string' }, time_to_market: { type: 'string' }, confidence: { type: 'number' }
         },
         required: ['idea', 'rationale']
       }
@@ -104,14 +96,7 @@ const AI_RESPONSE_SCHEMA = {
   required: ['summary', 'why_now', 'opportunities', 'risks']
 };
 
-const FALLBACK_REASONS = new Set([
-  'invalid-json',
-  'incomplete-output',
-  'too-short',
-  'low-value-language',
-  'title-echo',
-  'empty-model-response'
-]);
+const FALLBACK_REASONS = new Set(['invalid-json', 'incomplete-output', 'too-short', 'low-value-language', 'title-echo', 'empty-model-response']);
 
 function buildPrompt(topic, evidence) {
   return `你是互联网趋势分析师和产品机会研究员。基于真实证据分析热点。
@@ -139,17 +124,10 @@ async function runModel(env, model, topic, evidence, { structured = false } = {}
     max_completion_tokens: 900,
     temperature: structured ? 0.1 : 0.2
   };
-  if (structured) {
-    request.response_format = {
-      type: 'json_schema',
-      json_schema: AI_RESPONSE_SCHEMA
-    };
-  }
+  if (structured) request.response_format = { type: 'json_schema', json_schema: AI_RESPONSE_SCHEMA };
   const out = await env.AI.run(model, request);
   const payload = extractModelPayload(out);
-  if (!payload.rawText) {
-    return { analysis: null, failureReason: 'empty-model-response', rawText: '', model };
-  }
+  if (!payload.rawText) return { analysis: null, failureReason: 'empty-model-response', rawText: '', model };
   const normalized = normalizeAnalysis(payload.parsed, model, topic.canonical_title);
   return { ...normalized, rawText: payload.rawText, model };
 }
@@ -161,16 +139,26 @@ async function recordAttempt(env, topicId, model, result) {
     await env.DB.prepare(`
       INSERT INTO ai_attempts(topic_id,attempted_at,model,success,failure_reason,response_excerpt)
       VALUES(?,?,?,?,?,?)
-    `).bind(
-      topicId,
-      new Date().toISOString(),
-      model,
-      result?.analysis ? 1 : 0,
-      result?.failureReason || null,
-      excerpt
-    ).run();
+    `).bind(topicId, new Date().toISOString(), model, result?.analysis ? 1 : 0, result?.failureReason || null, excerpt).run();
   } catch (err) {
     console.warn('failed to persist AI attempt diagnostics', err);
+  }
+}
+
+async function runStructuredFallback(env, topic, evidence, primary, primaryFailureReason) {
+  const fallbackModel = env.AI_FALLBACK_MODEL || '@cf/meta/llama-3.1-8b-instruct-fast';
+  try {
+    const fallback = await runModel(env, fallbackModel, topic, evidence, { structured: true });
+    return { ...fallback, rawText: fallback.rawText || primary?.rawText || '', primaryFailureReason, fallbackUsed: true };
+  } catch (fallbackErr) {
+    return {
+      analysis: null,
+      failureReason: classifyInferenceError(fallbackErr, 'fallback-inference-error'),
+      rawText: String(fallbackErr?.message || fallbackErr).slice(0, 600) || primary?.rawText || '',
+      model: fallbackModel,
+      primaryFailureReason,
+      fallbackUsed: true
+    };
   }
 }
 
@@ -179,34 +167,22 @@ export async function analyzeTopicDetailed(env, topic, evidence) {
   const model = env.AI_MODEL || '@cf/zai-org/glm-4.7-flash';
   try {
     const primary = await runModel(env, model, topic, evidence);
-    if (primary.analysis || !FALLBACK_REASONS.has(primary.failureReason) || env.AI_DISABLE_FALLBACK === '1') return primary;
-
-    const fallbackModel = env.AI_FALLBACK_MODEL || '@cf/meta/llama-3.1-8b-instruct-fast';
-    try {
-      const fallback = await runModel(env, fallbackModel, topic, evidence, { structured: true });
-      return {
-        ...fallback,
-        rawText: fallback.rawText || primary.rawText,
-        primaryFailureReason: primary.failureReason,
-        fallbackUsed: true
-      };
-    } catch (fallbackErr) {
-      return {
-        ...primary,
-        failureReason: classifyInferenceError(fallbackErr, 'fallback-inference-error'),
-        rawText: String(fallbackErr?.message || fallbackErr).slice(0, 600) || primary.rawText,
-        primaryFailureReason: primary.failureReason,
-        fallbackUsed: true
-      };
-    }
+    if (primary.analysis || env.AI_DISABLE_FALLBACK === '1') return primary;
+    if (FALLBACK_REASONS.has(primary.failureReason)) return runStructuredFallback(env, topic, evidence, primary, primary.failureReason);
+    return primary;
   } catch (err) {
     console.error('AI analysis failed', err);
-    return {
+    const primaryFailureReason = classifyInferenceError(err);
+    const primary = {
       analysis: null,
-      failureReason: classifyInferenceError(err),
+      failureReason: primaryFailureReason,
       rawText: String(err?.message || err).slice(0, 600),
       model
     };
+    if (env.AI_DISABLE_FALLBACK !== '1' && isRecoverableInferenceFailure(primaryFailureReason)) {
+      return runStructuredFallback(env, topic, evidence, primary, primaryFailureReason);
+    }
+    return primary;
   }
 }
 
@@ -239,10 +215,7 @@ export async function enrichTopTopics(env, options = {}) {
       WHERE current_score >= 45
         AND ${INVALID_STORED_AI_SQL}
         AND (ai_updated_at IS NULL OR julianday(ai_updated_at) < julianday('now', ?))
-      ORDER BY
-        CASE WHEN ai_updated_at IS NULL THEN 0 ELSE 1 END,
-        breakout_score DESC,
-        current_score DESC
+      ORDER BY CASE WHEN ai_updated_at IS NULL THEN 0 ELSE 1 END, breakout_score DESC, current_score DESC
       LIMIT ?`
     : `
       SELECT * FROM topics
@@ -251,11 +224,7 @@ export async function enrichTopTopics(env, options = {}) {
           (${INVALID_STORED_AI_SQL} AND (ai_updated_at IS NULL OR julianday(ai_updated_at) < julianday('now', ?)))
           OR (NOT ${INVALID_STORED_AI_SQL} AND ai_updated_at IS NOT NULL AND julianday(ai_updated_at) < julianday('now', ?))
         )
-      ORDER BY
-        CASE WHEN ${INVALID_STORED_AI_SQL} THEN 0 ELSE 1 END,
-        CASE WHEN ai_updated_at IS NULL THEN 0 ELSE 1 END,
-        breakout_score DESC,
-        current_score DESC
+      ORDER BY CASE WHEN ${INVALID_STORED_AI_SQL} THEN 0 ELSE 1 END, CASE WHEN ai_updated_at IS NULL THEN 0 ELSE 1 END, breakout_score DESC, current_score DESC
       LIMIT ?`;
 
   const stmt = env.DB.prepare(candidateSql);
@@ -276,9 +245,7 @@ export async function enrichTopTopics(env, options = {}) {
       failed++;
       const reason = result.failureReason || 'unknown';
       failureReasons[reason] = (failureReasons[reason] || 0) + 1;
-      if (!isStoredAIValid(topic)) {
-        await env.DB.prepare(`UPDATE topics SET ai_updated_at=? WHERE id=?`).bind(now, topic.id).run();
-      }
+      if (!isStoredAIValid(topic)) await env.DB.prepare(`UPDATE topics SET ai_updated_at=? WHERE id=?`).bind(now, topic.id).run();
       continue;
     }
     await env.DB.prepare(`UPDATE topics SET ai_summary=?, ai_why_now=?, ai_opportunities_json=?, ai_risks=?, ai_updated_at=? WHERE id=?`).bind(analysis.summary, analysis.why_now, JSON.stringify(analysis.opportunities), analysis.risks, now, topic.id).run();
