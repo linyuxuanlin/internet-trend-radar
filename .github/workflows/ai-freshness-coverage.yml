@@ -5,6 +5,9 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  schedule:
+    # Pages refresh runs at :17. Probe later so CDN propagation has time to settle.
+    - cron: '47 * * * *'
 
 jobs:
   freshness:
@@ -16,7 +19,9 @@ jobs:
           node --check scripts/analyze-ai-freshness-coverage.mjs
           node scripts/analyze-ai-freshness-coverage.mjs --self-test
       - name: Probe live real dashboard coverage
-        continue-on-error: true
+        # A PR cannot guarantee that its code is deployed yet, so live drift is advisory
+        # there. On main, manual runs, and the hourly watchdog, stale public data must fail.
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         env:
           DASHBOARD_URL: https://linyuxuanlin.github.io/internet-trend-radar/data/dashboard.json
           FETCH_TIMEOUT_MS: 15000
