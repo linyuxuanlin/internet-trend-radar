@@ -57,6 +57,19 @@ CREATE TABLE IF NOT EXISTS topics (
 CREATE INDEX IF NOT EXISTS idx_topics_score ON topics(current_score DESC);
 CREATE INDEX IF NOT EXISTS idx_topics_breakout ON topics(breakout_score DESC);
 
+CREATE TABLE IF NOT EXISTS ai_attempts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  topic_id TEXT NOT NULL,
+  attempted_at TEXT NOT NULL,
+  model TEXT NOT NULL,
+  success INTEGER NOT NULL DEFAULT 0,
+  failure_reason TEXT,
+  response_excerpt TEXT,
+  FOREIGN KEY(topic_id) REFERENCES topics(id)
+);
+CREATE INDEX IF NOT EXISTS idx_ai_attempts_time ON ai_attempts(attempted_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_attempts_topic_time ON ai_attempts(topic_id, attempted_at DESC);
+
 CREATE TABLE IF NOT EXISTS topic_snapshots (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   topic_id TEXT NOT NULL,
@@ -140,16 +153,11 @@ export class D1SchemaBootstrapError extends Error {
 }
 
 async function executeSchemaStatement(db, statement) {
-  // Prefer D1's prepared-statement API for single static schema statements. This keeps
-  // bootstrap on the same Worker Binding path used by normal queries.
   if (typeof db.prepare === 'function') {
     let prepared;
     try {
       prepared = db.prepare(statement);
     } catch (prepareError) {
-      // Some deterministic test doubles intentionally only understand runtime SELECTs.
-      // Real D1 supports static prepared statements, so only fall back when prepare itself
-      // is unavailable for the statement. If run() fails, preserve that real D1 failure.
       if (typeof db.exec === 'function') return db.exec(`${statement};`);
       throw prepareError;
     }
