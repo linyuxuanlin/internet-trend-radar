@@ -1,0 +1,57 @@
+name: AI Regression
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ai-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate regression analyzer deterministically
+        run: |
+          cat > /tmp/ai-debug-good.json <<'JSON'
+          {
+            "generatedAt":"2026-08-22T14:00:00.000Z",
+            "ai":{
+              "blocked_reason":"partial-ai-coverage",
+              "eligible_topics":400,
+              "verified_topics":100,
+              "pending_topics":300,
+              "recent_attempts_1h":20,
+              "recent_successes_1h":12,
+              "recent_failures_1h":8,
+              "recent_failure_reasons_1h":[
+                {"reason":"inference-error:invalid-request:AiError","count":3,"last_at":"2026-08-22T13:59:00.000Z"},
+                {"reason":"empty-model-response","count":5,"last_at":"2026-08-22T13:58:00.000Z"}
+              ],
+              "model_stats_1h":[{"model":"@cf/meta/llama-3.3-70b-instruct-fp8-fast","attempts":20,"successes":12,"failures":8,"success_rate":60}]
+            }
+          }
+          JSON
+          AI_DEBUG_FILE=/tmp/ai-debug-good.json AI_REGRESSION_STRICT=1 node scripts/check-live-ai-regression.mjs
+
+          cat > /tmp/ai-debug-bad.json <<'JSON'
+          {
+            "ai":{
+              "recent_attempts_1h":20,
+              "recent_successes_1h":1,
+              "recent_failures_1h":19,
+              "recent_failure_reasons_1h":[{"reason":"inference-error:invalid-request:AiError","count":15}],
+              "model_stats_1h":[]
+            }
+          }
+          JSON
+          if AI_DEBUG_FILE=/tmp/ai-debug-bad.json AI_REGRESSION_STRICT=1 node scripts/check-live-ai-regression.mjs; then
+            echo "expected strict regression fixture to fail" >&2
+            exit 1
+          fi
+
+      - name: Probe production one-hour AI health
+        env:
+          AI_DEBUG_URL: https://internet-trend-radar.linyuxuanlin.workers.dev/api/debug
+          AI_REGRESSION_MIN_ATTEMPTS: '10'
+          AI_REGRESSION_MAX_INVALID_RATE: '0.5'
+        run: node scripts/check-live-ai-regression.mjs
