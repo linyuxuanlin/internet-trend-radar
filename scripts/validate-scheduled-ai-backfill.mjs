@@ -1,6 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 const source = await readFile(new URL('../src/index.js', import.meta.url), 'utf8');
+const collector = await readFile(new URL('../src/collector.js', import.meta.url), 'utf8');
+const wrangler = await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
 
 const scheduledStart = source.indexOf('async scheduled(controller, env, ctx)');
 if (scheduledStart < 0) throw new Error('scheduled handler missing');
@@ -17,4 +19,22 @@ if (!scheduled.includes('scheduled AI backfill failed; real collection already c
 }
 if (!scheduled.includes("controller.cron === '5 0 * * *'")) throw new Error('daily digest cron guard missing');
 
-console.log('Scheduled AI backfill validation passed');
+if (!collector.includes('async function enrichAIWithoutBlockingCollection(env)')) {
+  throw new Error('collector must isolate AI enrichment from real-data collection');
+}
+if (!collector.includes('AI enrichment failed after real collection; preserving collected data')) {
+  throw new Error('collector must explicitly preserve real data when AI enrichment fails');
+}
+if (!collector.includes("return { failed: true, error }")) {
+  throw new Error('collector AI failure must return truthful degraded metadata');
+}
+if (!collector.includes('const ai = await enrichAIWithoutBlockingCollection(env)')) {
+  throw new Error('collectAll must use non-blocking AI enrichment wrapper');
+}
+
+const config = JSON.parse(wrangler.replace(/^\s*\/\/.*$/gm, ''));
+const topN = Number(config?.vars?.AI_TOP_N || 0);
+if (topN !== 10) throw new Error(`expected bounded AI_TOP_N=10, got ${topN}`);
+if (topN > 12) throw new Error(`AI_TOP_N must remain bounded to avoid inference bursts, got ${topN}`);
+
+console.log('Scheduled AI backfill and collection-safe AI degradation validation passed');
