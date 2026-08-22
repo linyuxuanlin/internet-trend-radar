@@ -50,6 +50,11 @@ jobs:
           if (!d.ai || typeof d.ai !== 'object') throw new Error('live /api/debug missing ai diagnostics');
           const required = ['binding','eligible_topics','attempted_topics','verified_topics','pending_topics','stale_topics','ready_for_inference','blocked_reason'];
           for (const key of required) if (!(key in d.ai)) throw new Error(`live /api/debug missing ai.${key}`);
+          const attemptFields = ['recent_attempts_24h','recent_successes_24h','recent_failures_24h','recent_failure_reasons'];
+          const deployedHasAttemptDiagnostics = attemptFields.every(key => key in d.ai);
+          if (!deployedHasAttemptDiagnostics) {
+            console.log('::warning::Deployed Worker predates AI attempt diagnostics; this PR will require these fields after deployment');
+          }
           const allowed = new Set([null,'missing-ai-and-db-binding','missing-db-binding','d1-schema-incomplete','d1-schema-probe-failed','missing-ai-binding','no-eligible-topics','inference-not-run','outputs-failed-quality-gate','partial-ai-coverage','ai-readiness-query-failed']);
           if (!allowed.has(d.ai.blocked_reason)) throw new Error(`unknown live blocker: ${d.ai.blocked_reason}`);
           const snapshot = {
@@ -75,7 +80,11 @@ jobs:
               pending_topics: d.ai.pending_topics,
               stale_topics: d.ai.stale_topics,
               ready_for_inference: d.ai.ready_for_inference,
-              blocked_reason: d.ai.blocked_reason
+              blocked_reason: d.ai.blocked_reason,
+              recent_attempts_24h: d.ai.recent_attempts_24h ?? null,
+              recent_successes_24h: d.ai.recent_successes_24h ?? null,
+              recent_failures_24h: d.ai.recent_failures_24h ?? null,
+              recent_failure_reasons: d.ai.recent_failure_reasons ?? null
             }
           };
           console.log(JSON.stringify(snapshot, null, 2));
