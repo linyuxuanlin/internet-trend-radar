@@ -36,5 +36,11 @@ const config = JSON.parse(wrangler.replace(/^\s*\/\/.*$/gm, ''));
 const topN = Number(config?.vars?.AI_TOP_N || 0);
 if (topN !== 10) throw new Error(`expected bounded AI_TOP_N=10, got ${topN}`);
 if (topN > 12) throw new Error(`AI_TOP_N must remain bounded to avoid inference bursts, got ${topN}`);
+if (String(config?.vars?.AI_DISABLE_FALLBACK || '') !== '1') {
+  throw new Error('production must disable low-yield fallback until diagnostics show it is competitive');
+}
+if (config?.vars?.AI_MODEL !== '@cf/meta/llama-3.3-70b-instruct-fp8-fast') {
+  throw new Error(`unexpected production primary model: ${config?.vars?.AI_MODEL}`);
+}
 
-console.log('Scheduled AI backfill and collection-safe AI degradation validation passed');
+console.log('Scheduled AI backfill, collection-safe degradation, and primary-only production AI policy validated');
