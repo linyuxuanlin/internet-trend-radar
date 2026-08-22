@@ -93,7 +93,7 @@ assert(candidateSqls.length === 2, `candidate SQL count=${candidateSqls.length}`
 for (const sql of candidateSqls) {
   assert(sql.includes("julianday(last_seen_at) >= julianday('now','-6 hours')"), 'freshest 6h topics must receive first quota priority');
   assert(sql.includes("julianday(last_seen_at) >= julianday('now','-24 hours')"), 'recent 24h topics must outrank historical backlog');
-  assert(sql.includes('breakout_score DESC, current_score DESC, source_count DESC, last_seen_at DESC'), 'priority tie-breakers must favor breakout, score, source breadth, then recency');
+  assert(/breakout_score\s+DESC,\s*current_score\s+DESC,\s*source_count\s+DESC,\s*last_seen_at\s+DESC/.test(sql), 'priority tie-breakers must favor breakout, score, source breadth, then recency');
 }
 
 console.log('Workers AI daily quota circuit and freshness-first quota-aware candidate priority validated');
