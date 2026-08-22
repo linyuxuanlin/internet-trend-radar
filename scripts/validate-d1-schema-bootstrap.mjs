@@ -4,32 +4,43 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-const executed = [];
+const prepared = [];
 const db = {
-  async exec(sql) {
-    executed.push(sql);
+  prepare(sql) {
+    prepared.push(sql);
     assert(!/PRAGMA\s+foreign_keys\s*=\s*(ON|1)/i.test(sql), 'schema bootstrap must not toggle D1 foreign_keys');
-    return { count: 1, duration: 1 };
+    return {
+      async run() {
+        return { success: true, meta: { changes: 0 } };
+      }
+    };
+  },
+  async exec() {
+    throw new Error('real D1-compatible bootstrap must prefer prepare().run() over exec()');
   }
 };
 
 const first = await ensureSchema({ DB: db });
 const second = await ensureSchema({ DB: db });
 assert(first.ok === true && second.ok === true, 'schema bootstrap must succeed');
-assert(executed.length > 1, 'schema bootstrap must execute statements progressively');
+assert(prepared.length > 1, 'schema bootstrap must execute statements progressively');
 for (const table of ['sources', 'raw_items', 'topics', 'topic_snapshots', 'topic_sources', 'subscribers', 'digests']) {
-  assert(executed.some(sql => sql.includes(`CREATE TABLE IF NOT EXISTS ${table}`)), `schema bootstrap must create ${table}`);
+  assert(prepared.some(sql => sql.includes(`CREATE TABLE IF NOT EXISTS ${table}`)), `schema bootstrap must create ${table}`);
 }
-const cachedCount = executed.length;
+const cachedCount = prepared.length;
 await ensureSchema({ DB: db });
-assert(executed.length === cachedCount, 'successful schema bootstrap must be cached per binding');
+assert(prepared.length === cachedCount, 'successful schema bootstrap must be cached per binding');
 
 let attempts = 0;
 const failingDb = {
-  async exec(sql) {
-    attempts++;
-    if (sql.includes('CREATE TABLE IF NOT EXISTS topics')) throw new Error('simulated D1 DDL rejection');
-    return { count: 1, duration: 1 };
+  prepare(sql) {
+    return {
+      async run() {
+        attempts++;
+        if (sql.includes('CREATE TABLE IF NOT EXISTS topics')) throw new Error('simulated D1 prepared DDL rejection');
+        return { success: true };
+      }
+    };
   }
 };
 let failure = null;
@@ -44,4 +55,14 @@ const firstAttemptCount = attempts;
 try { await ensureSchema({ DB: failingDb }); } catch {}
 assert(attempts > firstAttemptCount, 'failed schema bootstrap must clear cache so a later request can retry');
 
-console.log(`D1 progressive schema bootstrap validated across ${executed.length} statements with precise retryable failure diagnostics`);
+let execFallbackCount = 0;
+const legacyMockDb = {
+  async exec(sql) {
+    execFallbackCount++;
+    return { sql };
+  }
+};
+const legacy = await ensureSchema({ DB: legacyMockDb });
+assert(legacy.ok === true && execFallbackCount > 1, 'exec-only deterministic mocks must retain compatibility');
+
+console.log(`D1 prepared progressive bootstrap validated across ${prepared.length} statements with precise retryable failure diagnostics`);

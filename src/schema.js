@@ -118,26 +118,44 @@ INSERT OR IGNORE INTO sources(id,name,region,kind) VALUES
 ('xiaohongshu','小红书','cn','external-bridge');
 `;
 
-// D1's exec() accepts multiple statements, but one incompatible statement aborts the
-// remainder and historically left a fresh database with no useful schema. Execute each
-// top-level statement independently so successful DDL is retained and any remaining
-// incompatibility is reported with the exact failing statement.
 const SCHEMA_STATEMENTS = SCHEMA_SQL
   .split(';')
   .map(statement => statement.trim())
   .filter(Boolean);
 
-// A Worker isolate can observe more than one DB mock/binding over its lifetime in tests,
-// previews, or multi-environment reuse. Cache per D1 binding rather than globally so a
-// successful bootstrap for one binding can never suppress schema initialization for another.
 const schemaPromises = new WeakMap();
+
+async function executeSchemaStatement(db, statement) {
+  // Prefer D1's prepared-statement API for single static schema statements. This keeps
+  // bootstrap on the same Worker Binding path used by normal queries.
+  if (typeof db.prepare === 'function') {
+    let prepared;
+    try {
+      prepared = db.prepare(statement);
+    } catch (prepareError) {
+      // Some deterministic test doubles intentionally only understand runtime SELECTs.
+      // Real D1 supports static prepared statements, so only fall back when prepare itself
+      // is unavailable for the statement. If run() fails, preserve that real D1 failure.
+      if (typeof db.exec === 'function') return db.exec(`${statement};`);
+      throw prepareError;
+    }
+    if (!prepared || typeof prepared.run !== 'function') {
+      if (typeof db.exec === 'function') return db.exec(`${statement};`);
+      throw new Error('D1 prepare() did not return a runnable statement');
+    }
+    return prepared.run();
+  }
+
+  if (typeof db.exec === 'function') return db.exec(`${statement};`);
+  throw new Error('D1 binding exposes neither prepare().run() nor exec()');
+}
 
 async function bootstrapSchema(db) {
   const results = [];
   for (let index = 0; index < SCHEMA_STATEMENTS.length; index++) {
     const statement = SCHEMA_STATEMENTS[index];
     try {
-      results.push(await db.exec(`${statement};`));
+      results.push(await executeSchemaStatement(db, statement));
     } catch (error) {
       const preview = statement.replace(/\s+/g, ' ').slice(0, 120);
       const message = String(error?.message || error);
