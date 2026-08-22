@@ -30,6 +30,21 @@ function hasLowValuePhrase(text) {
   return /值得关注|热度较高|持续升温|具有重要意义|前景广阔|机会巨大/.test(String(text || ''));
 }
 
+function classifyInferenceError(err, prefix = 'inference-error') {
+  const rawCode = String(err?.code || err?.status || err?.name || '').trim();
+  const message = String(err?.message || err || '').toLowerCase();
+  let kind = 'unknown';
+  if (/rate.?limit|too many requests|429/.test(message) || rawCode === '429') kind = 'rate-limit';
+  else if (/quota|limit exceeded|capacity/.test(message)) kind = 'quota-or-capacity';
+  else if (/unauthori[sz]ed|forbidden|permission|authentication|401|403/.test(message) || ['401', '403'].includes(rawCode)) kind = 'auth-or-permission';
+  else if (/model.*not found|unknown model|does not exist|404/.test(message) || rawCode === '404') kind = 'model-not-found';
+  else if (/timeout|timed out|deadline|abort/.test(message)) kind = 'timeout';
+  else if (/invalid.*request|bad request|schema|response_format|json_schema|400/.test(message) || rawCode === '400') kind = 'invalid-request';
+  else if (/internal|upstream|gateway|service unavailable|502|503|504/.test(message) || ['502', '503', '504'].includes(rawCode)) kind = 'upstream';
+  const code = rawCode && rawCode !== 'Error' ? rawCode.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 48) : null;
+  return `${prefix}:${kind}${code ? `:${code}` : ''}`;
+}
+
 export function isStoredAIValid(topic) {
   if (!topic) return false;
   const summary = String(topic.ai_summary || '').trim();
@@ -176,10 +191,9 @@ export async function analyzeTopicDetailed(env, topic, evidence) {
         fallbackUsed: true
       };
     } catch (fallbackErr) {
-      const fallbackCode = String(fallbackErr?.code || fallbackErr?.name || '').trim();
       return {
         ...primary,
-        failureReason: fallbackCode ? `fallback-inference-error:${fallbackCode}` : 'fallback-inference-error',
+        failureReason: classifyInferenceError(fallbackErr, 'fallback-inference-error'),
         rawText: String(fallbackErr?.message || fallbackErr).slice(0, 600) || primary.rawText,
         primaryFailureReason: primary.failureReason,
         fallbackUsed: true
@@ -187,10 +201,9 @@ export async function analyzeTopicDetailed(env, topic, evidence) {
     }
   } catch (err) {
     console.error('AI analysis failed', err);
-    const code = String(err?.code || err?.name || '').trim();
     return {
       analysis: null,
-      failureReason: code ? `inference-error:${code}` : 'inference-error',
+      failureReason: classifyInferenceError(err),
       rawText: String(err?.message || err).slice(0, 600),
       model
     };

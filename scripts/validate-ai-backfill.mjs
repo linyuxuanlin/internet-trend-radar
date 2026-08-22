@@ -1,4 +1,4 @@
-import { enrichTopTopics, isStoredAIValid } from '../src/ai.js';
+import { analyzeTopicDetailed, enrichTopTopics, isStoredAIValid } from '../src/ai.js';
 import { routeApi } from '../src/api.js';
 
 function assert(condition, message) {
@@ -110,6 +110,22 @@ function makeBackfillDb({ validModelOutput, fallbackValid = false, disableFallba
   assert(fixture.updates.some(x => x.kind === 'full'), 'object response from JSON mode must persist complete analysis');
 }
 
+{
+  const topic = { canonical_title: '真实趋势错误分类', category: '科技', current_score: 88, breakout_score: 80, source_count: 2 };
+  const evidence = [{ source_id: 'v2ex', title: '真实趋势错误分类出现新消息', rank: 1 }];
+  const rateLimit = Object.assign(new Error('Too many requests: rate limit exceeded'), { status: 429 });
+  const result = await analyzeTopicDetailed({ AI: { async run() { throw rateLimit; } }, AI_MODEL: '@cf/test/model' }, topic, evidence);
+  assert(result.failureReason === 'inference-error:rate-limit:429', `rate-limit reason=${result.failureReason}`);
+}
+
+{
+  const topic = { canonical_title: '真实趋势模型缺失', category: '科技', current_score: 88, breakout_score: 80, source_count: 2 };
+  const evidence = [{ source_id: 'v2ex', title: '真实趋势模型缺失出现新消息', rank: 1 }];
+  const notFound = Object.assign(new Error('Model not found'), { code: 404 });
+  const result = await analyzeTopicDetailed({ AI: { async run() { throw notFound; } }, AI_MODEL: '@cf/test/missing' }, topic, evidence);
+  assert(result.failureReason === 'inference-error:model-not-found:404', `model-not-found reason=${result.failureReason}`);
+}
+
 const invalidTopic = {
   id: 'bad-ai', canonical_title: '坏 AI 历史数据', category: '科技', current_score: 80, breakout_score: 70,
   ai_summary: '当前热度较高，值得关注后续发展。', ai_why_now: goodWhy,
@@ -136,4 +152,4 @@ const good = dashboard.topics.find(x => x.id === 'good-ai');
 assert(bad.ai_summary === null && bad.ai_why_now === null && bad.opportunities.length === 0 && bad.ai_verified === false, 'invalid historical AI must be hidden from public API');
 assert(good.ai_summary === goodSummary && good.opportunities.length === 1, 'valid AI must remain visible');
 
-console.log('AI backlog retry fairness, structured fallback, attempt diagnostics, and public quality gate validated');
+console.log('AI backlog retry fairness, structured fallback, actionable inference diagnostics, attempt diagnostics, and public quality gate validated');
