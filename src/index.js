@@ -78,6 +78,30 @@ function summarizeModelAttempts(rows) {
     .sort((a, b) => b.attempts - a.attempts || a.model.localeCompare(b.model));
 }
 
+function summarizeReasonWindow(rows) {
+  const reasonRows = Array.isArray(rows) ? rows : [];
+  const attempts = reasonRows.reduce((sum, row) => sum + Number(row.count || 0), 0);
+  const successes = reasonRows.filter(row => row.reason === 'success').reduce((sum, row) => sum + Number(row.count || 0), 0);
+  return {
+    attempts,
+    successes,
+    failures: Math.max(0, attempts - successes),
+    failure_reasons: reasonRows.filter(row => row.reason !== 'success').slice(0, 8).map(row => ({
+      reason: row.reason || 'unknown',
+      count: Number(row.count || 0),
+      last_at: row.last_at || null
+    }))
+  };
+}
+
+function buildAttemptReasonsProbe(env, hours, byModel = false) {
+  const group = byModel ? 'model, reason' : 'reason';
+  const selectModel = byModel ? 'model, ' : '';
+  return Promise.resolve()
+    .then(() => env.DB.prepare(`SELECT ${selectModel}CASE WHEN success=1 THEN 'success' ELSE COALESCE(failure_reason,'unknown') END AS reason, COUNT(*) AS count, MAX(attempted_at) AS last_at FROM ai_attempts WHERE julianday(attempted_at) >= julianday('now','-${hours} hours') GROUP BY ${group} ORDER BY ${byModel ? 'model ASC, ' : ''}count DESC, reason ASC`).all())
+    .catch(() => ({ results: [] }));
+}
+
 async function debugStatus(env) {
   const status = {
     db: Boolean(env.DB),
@@ -105,6 +129,11 @@ async function debugStatus(env) {
       last_updated_at: null,
       ready_for_inference: false,
       blocked_reason: null,
+      recent_attempts_1h: 0,
+      recent_successes_1h: 0,
+      recent_failures_1h: 0,
+      recent_failure_reasons_1h: [],
+      model_stats_1h: [],
       recent_attempts_24h: 0,
       recent_successes_24h: 0,
       recent_failures_24h: 0,
@@ -160,13 +189,11 @@ async function debugStatus(env) {
     const attemptedProbe = Promise.resolve()
       .then(() => env.DB.prepare(`SELECT COUNT(*) as count FROM topics WHERE current_score >= 45 AND ai_updated_at IS NOT NULL`).first())
       .catch(() => ({ count: null }));
-    const attemptReasonsProbe = Promise.resolve()
-      .then(() => env.DB.prepare(`SELECT CASE WHEN success=1 THEN 'success' ELSE COALESCE(failure_reason,'unknown') END AS reason, COUNT(*) AS count, MAX(attempted_at) AS last_at FROM ai_attempts WHERE julianday(attempted_at) >= julianday('now','-24 hours') GROUP BY reason ORDER BY count DESC, reason ASC`).all())
-      .catch(() => ({ results: [] }));
-    const modelReasonsProbe = Promise.resolve()
-      .then(() => env.DB.prepare(`SELECT model, CASE WHEN success=1 THEN 'success' ELSE COALESCE(failure_reason,'unknown') END AS reason, COUNT(*) AS count, MAX(attempted_at) AS last_at FROM ai_attempts WHERE julianday(attempted_at) >= julianday('now','-24 hours') GROUP BY model, reason ORDER BY model ASC, count DESC, reason ASC`).all())
-      .catch(() => ({ results: [] }));
-    const [raw, topics, sources, healthy, failed, lastSuccess, errors, aiEligible, aiAttempted, aiVerified, aiStale, aiLastUpdated, aiAttemptReasons, aiModelReasons] = await Promise.all([
+    const attemptReasons1hProbe = buildAttemptReasonsProbe(env, 1, false);
+    const modelReasons1hProbe = buildAttemptReasonsProbe(env, 1, true);
+    const attemptReasons24hProbe = buildAttemptReasonsProbe(env, 24, false);
+    const modelReasons24hProbe = buildAttemptReasonsProbe(env, 24, true);
+    const [raw, topics, sources, healthy, failed, lastSuccess, errors, aiEligible, aiAttempted, aiVerified, aiStale, aiLastUpdated, aiAttemptReasons1h, aiModelReasons1h, aiAttemptReasons24h, aiModelReasons24h] = await Promise.all([
       env.DB.prepare('SELECT COUNT(*) as count FROM raw_items').first(),
       env.DB.prepare('SELECT COUNT(*) as count FROM topics').first(),
       env.DB.prepare('SELECT COUNT(*) as count FROM sources').first(),
@@ -188,8 +215,10 @@ async function debugStatus(env) {
           AND ai_why_now NOT LIKE '%具有重要意义%' AND ai_why_now NOT LIKE '%前景广阔%' AND ai_why_now NOT LIKE '%机会巨大%'`).first(),
       env.DB.prepare(`SELECT COUNT(*) as count FROM topics WHERE current_score >= 45 AND ai_updated_at IS NOT NULL AND julianday(ai_updated_at) < julianday('now','-6 hours')`).first(),
       env.DB.prepare(`SELECT MAX(ai_updated_at) as value FROM topics WHERE ai_updated_at IS NOT NULL`).first(),
-      attemptReasonsProbe,
-      modelReasonsProbe
+      attemptReasons1hProbe,
+      modelReasons1hProbe,
+      attemptReasons24hProbe,
+      modelReasons24hProbe
     ]);
 
     status.raw_items = Number(raw?.count || 0);
@@ -206,16 +235,21 @@ async function debugStatus(env) {
     status.ai.pending_topics = Math.max(0, status.ai.eligible_topics - status.ai.verified_topics);
     status.ai.stale_topics = Number(aiStale?.count || 0);
     status.ai.last_updated_at = aiLastUpdated?.value || null;
-    const reasonRows = Array.isArray(aiAttemptReasons?.results) ? aiAttemptReasons.results : [];
-    status.ai.recent_attempts_24h = reasonRows.reduce((sum, row) => sum + Number(row.count || 0), 0);
-    status.ai.recent_successes_24h = reasonRows.filter(row => row.reason === 'success').reduce((sum, row) => sum + Number(row.count || 0), 0);
-    status.ai.recent_failures_24h = Math.max(0, status.ai.recent_attempts_24h - status.ai.recent_successes_24h);
-    status.ai.recent_failure_reasons = reasonRows.filter(row => row.reason !== 'success').slice(0, 8).map(row => ({
-      reason: row.reason || 'unknown',
-      count: Number(row.count || 0),
-      last_at: row.last_at || null
-    }));
-    status.ai.model_stats_24h = summarizeModelAttempts(aiModelReasons?.results || []);
+
+    const oneHour = summarizeReasonWindow(aiAttemptReasons1h?.results || []);
+    status.ai.recent_attempts_1h = oneHour.attempts;
+    status.ai.recent_successes_1h = oneHour.successes;
+    status.ai.recent_failures_1h = oneHour.failures;
+    status.ai.recent_failure_reasons_1h = oneHour.failure_reasons;
+    status.ai.model_stats_1h = summarizeModelAttempts(aiModelReasons1h?.results || []);
+
+    const day = summarizeReasonWindow(aiAttemptReasons24h?.results || []);
+    status.ai.recent_attempts_24h = day.attempts;
+    status.ai.recent_successes_24h = day.successes;
+    status.ai.recent_failures_24h = day.failures;
+    status.ai.recent_failure_reasons = day.failure_reasons;
+    status.ai.model_stats_24h = summarizeModelAttempts(aiModelReasons24h?.results || []);
+
     status.ai.ready_for_inference = status.ai.binding && status.ai.eligible_topics > 0 && status.ai.pending_topics > 0;
     status.ai.blocked_reason = classifyAIBlocker(status.ai, true);
     status.ready = status.raw_items > 0 && status.topics > 0 && status.healthy_sources > 0;

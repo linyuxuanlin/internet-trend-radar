@@ -29,7 +29,12 @@ const db = {
       async all() {
         if (sql.includes('sqlite_master')) return { results: requiredTables.map(name => ({ name })) };
         if (sql.includes('SELECT id,last_error,last_error_at FROM sources')) return { results: [] };
+        const oneHour = sql.includes("julianday('now','-1 hours')");
         if (sql.includes('GROUP BY model, reason')) {
+          if (oneHour) return { results: [
+            { model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', reason: 'success', count: 7, last_at: now },
+            { model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', reason: 'inference-error:invalid-request:AiError', count: 2, last_at: now }
+          ] };
           return { results: [
             { model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', reason: 'success', count: 18, last_at: now },
             { model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', reason: 'inference-error:upstream', count: 12, last_at: now },
@@ -39,6 +44,10 @@ const db = {
           ] };
         }
         if (sql.includes('GROUP BY reason')) {
+          if (oneHour) return { results: [
+            { reason: 'success', count: 7, last_at: now },
+            { reason: 'inference-error:invalid-request:AiError', count: 2, last_at: now }
+          ] };
           return { results: [
             { reason: 'success', count: 38, last_at: now },
             { reason: 'inference-error:upstream', count: 12, last_at: now },
@@ -60,9 +69,18 @@ const response = await worker.fetch(new Request('https://example.test/api/debug'
 });
 assert(response.status === 200, `debug status=${response.status}`);
 const body = await response.json();
-const stats = body.ai?.model_stats_24h;
-assert(Array.isArray(stats) && stats.length === 2, `model stats length=${stats?.length}`);
 
+const recent = body.ai?.model_stats_1h;
+assert(Array.isArray(recent) && recent.length === 1, `1h model stats length=${recent?.length}`);
+assert(body.ai.recent_attempts_1h === 9, `1h attempts=${body.ai.recent_attempts_1h}`);
+assert(body.ai.recent_successes_1h === 7, `1h successes=${body.ai.recent_successes_1h}`);
+assert(body.ai.recent_failures_1h === 2, `1h failures=${body.ai.recent_failures_1h}`);
+assert(body.ai.recent_failure_reasons_1h?.[0]?.reason === 'inference-error:invalid-request:AiError', '1h failure reason must be preserved');
+assert(recent[0]?.attempts === 9 && recent[0]?.successes === 7 && recent[0]?.failures === 2, `1h primary stats=${JSON.stringify(recent[0])}`);
+assert(recent[0]?.success_rate === 77.8, `1h primary success rate=${recent[0]?.success_rate}`);
+
+const stats = body.ai?.model_stats_24h;
+assert(Array.isArray(stats) && stats.length === 2, `24h model stats length=${stats?.length}`);
 const primary = stats.find(x => x.model === '@cf/meta/llama-3.3-70b-instruct-fp8-fast');
 const fallback = stats.find(x => x.model === '@cf/meta/llama-3.1-8b-instruct-fast');
 assert(primary?.attempts === 30 && primary?.successes === 18 && primary?.failures === 12, `primary stats=${JSON.stringify(primary)}`);
@@ -74,4 +92,4 @@ assert(fallback?.failure_reasons?.[0]?.reason === 'title-echo', 'fallback failur
 assert(body.ai.recent_attempts_24h === 55, `aggregate attempts=${body.ai.recent_attempts_24h}`);
 assert(body.ai.recent_successes_24h === 38, `aggregate successes=${body.ai.recent_successes_24h}`);
 
-console.log('Per-model Workers AI attempts, success rates, and failure distributions validated');
+console.log('One-hour and 24-hour per-model Workers AI diagnostics validated');
