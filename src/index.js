@@ -28,6 +28,16 @@ function classifyAIBlocker(ai, schemaOk = true) {
   return 'partial-ai-coverage';
 }
 
+function captureBootstrapError(schemaStatus, err) {
+  schemaStatus.bootstrap_ok = false;
+  schemaStatus.bootstrap_error = String(err?.message || err);
+  schemaStatus.bootstrap_error_code = err?.code || null;
+  schemaStatus.bootstrap_failed_statement_index = Number.isFinite(Number(err?.statementIndex)) ? Number(err.statementIndex) : null;
+  schemaStatus.bootstrap_statement_count = Number.isFinite(Number(err?.statementCount)) ? Number(err.statementCount) : null;
+  schemaStatus.bootstrap_failed_statement = err?.statementPreview || null;
+  schemaStatus.bootstrap_cause = err?.causeMessage || String(err?.cause?.message || '') || null;
+}
+
 async function debugStatus(env) {
   const status = {
     db: Boolean(env.DB),
@@ -37,7 +47,12 @@ async function debugStatus(env) {
       tables: {},
       bootstrap_attempted: false,
       bootstrap_ok: null,
-      bootstrap_error: null
+      bootstrap_error: null,
+      bootstrap_error_code: null,
+      bootstrap_failed_statement_index: null,
+      bootstrap_statement_count: null,
+      bootstrap_failed_statement: null,
+      bootstrap_cause: null
     },
     ai: {
       binding: Boolean(env.AI),
@@ -78,8 +93,7 @@ async function debugStatus(env) {
     await ensureSchema(env);
     status.schema.bootstrap_ok = true;
   } catch (err) {
-    status.schema.bootstrap_ok = false;
-    status.schema.bootstrap_error = String(err?.message || err);
+    captureBootstrapError(status.schema, err);
   }
 
   const requiredTables = ['sources', 'raw_items', 'topics', 'topic_snapshots', 'topic_sources'];
