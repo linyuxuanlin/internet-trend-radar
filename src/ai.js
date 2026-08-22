@@ -24,7 +24,7 @@ export function isStoredAIValid(topic) {
 }
 
 function normalizeAnalysis(parsed, model, topicTitle) {
-  if (!parsed || typeof parsed !== 'object') return null;
+  if (!parsed || typeof parsed !== 'object') return { analysis: null, failureReason: 'invalid-json' };
   const summary = String(parsed.summary || '').trim();
   const whyNow = String(parsed.why_now || '').trim();
   const risks = String(parsed.risks || '').trim();
@@ -37,15 +37,35 @@ function normalizeAnalysis(parsed, model, topicTitle) {
         ai_model: model
       })).filter(o => o.idea && o.rationale)
     : [];
-  if (!summary || !whyNow || opportunities.length < 1) return null;
-  if (summary.length < 20 || whyNow.length < 20) return null;
-  if (hasLowValuePhrase(summary) || hasLowValuePhrase(whyNow)) return null;
-  if (summary === topicTitle || summary.includes(topicTitle)) return null;
-  return { summary, why_now: whyNow, opportunities, risks };
+  if (!summary || !whyNow || opportunities.length < 1) return { analysis: null, failureReason: 'incomplete-output' };
+  if (summary.length < 20 || whyNow.length < 20) return { analysis: null, failureReason: 'too-short' };
+  if (hasLowValuePhrase(summary) || hasLowValuePhrase(whyNow)) return { analysis: null, failureReason: 'low-value-language' };
+  if (summary === topicTitle || summary.includes(topicTitle)) return { analysis: null, failureReason: 'title-echo' };
+  return { analysis: { summary, why_now: whyNow, opportunities, risks }, failureReason: null };
 }
 
-export async function analyzeTopic(env, topic, evidence) {
-  if (!env.AI) return null;
+async function recordAttempt(env, topicId, model, result) {
+  if (!env.DB) return;
+  const excerpt = String(result?.rawText || '').replace(/\s+/g, ' ').slice(0, 600) || null;
+  try {
+    await env.DB.prepare(`
+      INSERT INTO ai_attempts(topic_id,attempted_at,model,success,failure_reason,response_excerpt)
+      VALUES(?,?,?,?,?,?)
+    `).bind(
+      topicId,
+      new Date().toISOString(),
+      model,
+      result?.analysis ? 1 : 0,
+      result?.failureReason || null,
+      excerpt
+    ).run();
+  } catch (err) {
+    console.warn('failed to persist AI attempt diagnostics', err);
+  }
+}
+
+export async function analyzeTopicDetailed(env, topic, evidence) {
+  if (!env.AI) return { analysis: null, failureReason: 'missing-ai-binding', rawText: '', model: null };
   const model = env.AI_MODEL || '@cf/zai-org/glm-4.7-flash';
   const prompt = `你是互联网趋势分析师和产品机会研究员。基于真实证据分析热点。
 不要复述标题，不要写新闻摘要模板，不要把热度等同于商业价值。
@@ -70,12 +90,25 @@ export async function analyzeTopic(env, topic, evidence) {
       max_completion_tokens: 900,
       temperature: 0.2
     });
-    const text = out?.response || out?.result?.response || out?.choices?.[0]?.message?.content || '';
-    return normalizeAnalysis(extractJson(text), model, topic.canonical_title);
+    const rawText = out?.response || out?.result?.response || out?.choices?.[0]?.message?.content || '';
+    if (!String(rawText).trim()) return { analysis: null, failureReason: 'empty-model-response', rawText: '', model };
+    const normalized = normalizeAnalysis(extractJson(rawText), model, topic.canonical_title);
+    return { ...normalized, rawText, model };
   } catch (err) {
     console.error('AI analysis failed', err);
-    return null;
+    const code = String(err?.code || err?.name || '').trim();
+    return {
+      analysis: null,
+      failureReason: code ? `inference-error:${code}` : 'inference-error',
+      rawText: String(err?.message || err).slice(0, 600),
+      model
+    };
   }
+}
+
+export async function analyzeTopic(env, topic, evidence) {
+  const result = await analyzeTopicDetailed(env, topic, evidence);
+  return result.analysis;
 }
 
 const INVALID_STORED_AI_SQL = `(
@@ -128,15 +161,17 @@ export async function enrichTopTopics(env, options = {}) {
 
   let count = 0;
   let failed = 0;
+  const failureReasons = {};
   for (const topic of results) {
     const { results: evidence = [] } = await env.DB.prepare(`SELECT source_id,title,url,rank,captured_at FROM topic_sources WHERE topic_id=? ORDER BY captured_at DESC LIMIT 12`).bind(topic.id).all();
-    const analysis = await analyzeTopic(env, topic, evidence);
+    const result = await analyzeTopicDetailed(env, topic, evidence);
+    await recordAttempt(env, topic.id, result.model || env.AI_MODEL || 'unknown', result);
+    const analysis = result.analysis;
     const now = new Date().toISOString();
     if (!analysis) {
       failed++;
-      // Missing/low-quality topics need a retry timestamp so one stubborn high-score topic
-      // cannot monopolize every batch and starve the rest of the historical backlog.
-      // Previously valid content is preserved if a stale refresh fails.
+      const reason = result.failureReason || 'unknown';
+      failureReasons[reason] = (failureReasons[reason] || 0) + 1;
       if (!isStoredAIValid(topic)) {
         await env.DB.prepare(`UPDATE topics SET ai_updated_at=? WHERE id=?`).bind(now, topic.id).run();
       }
@@ -145,5 +180,12 @@ export async function enrichTopTopics(env, options = {}) {
     await env.DB.prepare(`UPDATE topics SET ai_summary=?, ai_why_now=?, ai_opportunities_json=?, ai_risks=?, ai_updated_at=? WHERE id=?`).bind(analysis.summary, analysis.why_now, JSON.stringify(analysis.opportunities), analysis.risks, now, topic.id).run();
     count++;
   }
-  return { updated: count, failed, selected: results.length, backfillOnly, retryMinutes, refreshHours };
+
+  try {
+    await env.DB.prepare(`DELETE FROM ai_attempts WHERE julianday(attempted_at) < julianday('now','-7 days')`).run();
+  } catch (err) {
+    console.warn('failed to prune AI attempt diagnostics', err);
+  }
+
+  return { updated: count, failed, selected: results.length, failureReasons, backfillOnly, retryMinutes, refreshHours };
 }
