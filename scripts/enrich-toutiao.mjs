@@ -43,11 +43,22 @@ function normalizeRows(rows) {
   })).filter(row => row.title);
 }
 
+function isToutiaoUrl(value) {
+  if (!value) return false;
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return hostname === 'toutiao.com' || hostname.endsWith('.toutiao.com');
+  } catch {
+    return false;
+  }
+}
+
 function makeTopic(row, total, capturedAt) {
   const score = scoreItem(row.rank, total, row.heat, 0);
   const breakout = clamp(score * (row.rank <= 5 ? 0.95 : row.rank <= 10 ? 0.8 : 0.62));
   const id = fingerprintTitle(row.title);
   const fallbackUrl = `https://www.toutiao.com/search/?keyword=${encodeURIComponent(row.title)}`;
+  const sourceUrl = isToutiaoUrl(row.url) ? row.url : fallbackUrl;
   return {
     id,
     fingerprint: id,
@@ -67,7 +78,7 @@ function makeTopic(row, total, capturedAt) {
     sources: [{
       source_id: 'toutiao',
       external_id: `toutiao:${id}`,
-      url: row.url || fallbackUrl,
+      url: sourceUrl,
       title: row.title,
       rank: row.rank,
       captured_at: capturedAt
@@ -107,6 +118,7 @@ try {
   const body = await fetchBoard();
   const rows = normalizeRows(pickRows(body)).slice(0, 20);
   if (!rows.length) throw new Error(`Toutiao hot board returned no usable rows; keys=${Object.keys(body || {}).join(',')}`);
+  const offDomainCount = rows.filter(row => row.url && !isToutiaoUrl(row.url)).length;
   const topics = rows.map(row => makeTopic(row, rows.length, capturedAt));
   dashboard.topics = mergeTopics(dashboard.topics, topics);
   setSource(dashboard, {
@@ -120,7 +132,7 @@ try {
     last_item_count: topics.length
   });
   await writeFile(DASHBOARD, JSON.stringify(dashboard, null, 2) + '\n', 'utf8');
-  console.log(`OK toutiao: ${topics.length}; dashboard topics=${dashboard.topics.length}`);
+  console.log(`OK toutiao: ${topics.length}; dashboard topics=${dashboard.topics.length}; sanitizedOffDomain=${offDomainCount}`);
 } catch (error) {
   const message = String(error?.message || error).slice(0, 300);
   setSource(dashboard, {
