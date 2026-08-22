@@ -31,10 +31,7 @@ function makeBackfillDb({ validModelOutput, fallbackValid = false, disableFallba
     prepare(sql) {
       if (sql.includes('SELECT * FROM topics')) {
         return {
-          bind(...args) {
-            binds.push(args);
-            return this;
-          },
+          bind(...args) { binds.push(args); return this; },
           async all() { return { results: [topic] }; }
         };
       }
@@ -45,25 +42,14 @@ function makeBackfillDb({ validModelOutput, fallbackValid = false, disableFallba
         };
       }
       if (sql.includes('INSERT INTO ai_attempts')) {
-        return {
-          bind(...args) { attempts.push(args); return this; },
-          async run() { return { success: true }; }
-        };
+        return { bind(...args) { attempts.push(args); return this; }, async run() { return { success: true }; } };
       }
-      if (sql.includes('DELETE FROM ai_attempts')) {
-        return { async run() { return { success: true }; } };
-      }
+      if (sql.includes('DELETE FROM ai_attempts')) return { async run() { return { success: true }; } };
       if (sql.startsWith('UPDATE topics SET ai_updated_at=')) {
-        return {
-          bind(...args) { updates.push({ kind: 'retry', args }); return this; },
-          async run() { return { success: true }; }
-        };
+        return { bind(...args) { updates.push({ kind: 'retry', args }); return this; }, async run() { return { success: true }; } };
       }
       if (sql.startsWith('UPDATE topics SET ai_summary=')) {
-        return {
-          bind(...args) { updates.push({ kind: 'full', args }); return this; },
-          async run() { return { success: true }; }
-        };
+        return { bind(...args) { updates.push({ kind: 'full', args }); return this; }, async run() { return { success: true }; } };
       }
       throw new Error(`unexpected backfill SQL: ${sql}`);
     },
@@ -111,10 +97,46 @@ function makeBackfillDb({ validModelOutput, fallbackValid = false, disableFallba
 }
 
 {
+  const topic = { canonical_title: '真实趋势运行时降级', category: '科技', current_score: 88, breakout_score: 80, source_count: 2 };
+  const evidence = [{ source_id: 'v2ex', title: '真实趋势运行时降级出现新消息', rank: 1 }];
+  const calls = [];
+  const rateLimit = Object.assign(new Error('Too many requests: rate limit exceeded'), { status: 429 });
+  const result = await analyzeTopicDetailed({
+    AI_MODEL: '@cf/test/primary',
+    AI_FALLBACK_MODEL: '@cf/test/fallback',
+    AI: {
+      async run(model, request) {
+        calls.push({ model, request });
+        if (calls.length === 1) throw rateLimit;
+        return { response: goodPayload };
+      }
+    }
+  }, topic, evidence);
+  assert(result.analysis?.summary === goodSummary, `runtime fallback analysis=${JSON.stringify(result)}`);
+  assert(result.fallbackUsed === true, 'recoverable runtime error must use fallback');
+  assert(result.primaryFailureReason === 'inference-error:rate-limit:429', `primary reason=${result.primaryFailureReason}`);
+  assert(result.model === '@cf/test/fallback', `fallback result model=${result.model}`);
+  assert(calls.length === 2 && calls[1].request?.response_format?.type === 'json_schema', 'runtime fallback must use structured fallback request');
+}
+
+{
+  const topic = { canonical_title: '真实趋势权限失败', category: '科技', current_score: 88, breakout_score: 80, source_count: 2 };
+  const evidence = [{ source_id: 'v2ex', title: '真实趋势权限失败出现新消息', rank: 1 }];
+  let calls = 0;
+  const forbidden = Object.assign(new Error('Forbidden: permission denied'), { status: 403 });
+  const result = await analyzeTopicDetailed({
+    AI: { async run() { calls++; throw forbidden; } },
+    AI_MODEL: '@cf/test/model'
+  }, topic, evidence);
+  assert(result.failureReason === 'inference-error:auth-or-permission:403', `auth reason=${result.failureReason}`);
+  assert(calls === 1, 'auth/permission failure must not spend a fallback call');
+}
+
+{
   const topic = { canonical_title: '真实趋势错误分类', category: '科技', current_score: 88, breakout_score: 80, source_count: 2 };
   const evidence = [{ source_id: 'v2ex', title: '真实趋势错误分类出现新消息', rank: 1 }];
   const rateLimit = Object.assign(new Error('Too many requests: rate limit exceeded'), { status: 429 });
-  const result = await analyzeTopicDetailed({ AI: { async run() { throw rateLimit; } }, AI_MODEL: '@cf/test/model' }, topic, evidence);
+  const result = await analyzeTopicDetailed({ AI: { async run() { throw rateLimit; } }, AI_MODEL: '@cf/test/model', AI_DISABLE_FALLBACK: '1' }, topic, evidence);
   assert(result.failureReason === 'inference-error:rate-limit:429', `rate-limit reason=${result.failureReason}`);
 }
 
@@ -122,7 +144,7 @@ function makeBackfillDb({ validModelOutput, fallbackValid = false, disableFallba
   const topic = { canonical_title: '真实趋势模型缺失', category: '科技', current_score: 88, breakout_score: 80, source_count: 2 };
   const evidence = [{ source_id: 'v2ex', title: '真实趋势模型缺失出现新消息', rank: 1 }];
   const notFound = Object.assign(new Error('Model not found'), { code: 404 });
-  const result = await analyzeTopicDetailed({ AI: { async run() { throw notFound; } }, AI_MODEL: '@cf/test/missing' }, topic, evidence);
+  const result = await analyzeTopicDetailed({ AI: { async run() { throw notFound; } }, AI_MODEL: '@cf/test/missing', AI_DISABLE_FALLBACK: '1' }, topic, evidence);
   assert(result.failureReason === 'inference-error:model-not-found:404', `model-not-found reason=${result.failureReason}`);
 }
 
@@ -152,4 +174,4 @@ const good = dashboard.topics.find(x => x.id === 'good-ai');
 assert(bad.ai_summary === null && bad.ai_why_now === null && bad.opportunities.length === 0 && bad.ai_verified === false, 'invalid historical AI must be hidden from public API');
 assert(good.ai_summary === goodSummary && good.opportunities.length === 1, 'valid AI must remain visible');
 
-console.log('AI backlog retry fairness, structured fallback, actionable inference diagnostics, attempt diagnostics, and public quality gate validated');
+console.log('AI backlog retry fairness, structured/runtime fallback, actionable inference diagnostics, attempt diagnostics, and public quality gate validated');
