@@ -16,6 +16,12 @@ function freshnessBucket(topic, nowMs) {
   return 'backlog_24h_plus';
 }
 
+function dashboardAgeHours(data, nowMs) {
+  const generatedMs = Date.parse(data?.generatedAt || '');
+  if (!Number.isFinite(generatedMs)) return null;
+  return Math.max(0, Math.round(((nowMs - generatedMs) / 3600000) * 100) / 100);
+}
+
 export function analyzeFreshnessCoverage(data, now = new Date()) {
   if (data?.preview !== false || data?.ready !== true || !Array.isArray(data?.topics)) {
     throw new Error('freshness analysis requires a real-data ready dashboard');
@@ -43,6 +49,8 @@ export function analyzeFreshnessCoverage(data, now = new Date()) {
   return {
     generated_at: new Date().toISOString(),
     dashboard_generated_at: data.generatedAt || null,
+    dashboard_age_hours: dashboardAgeHours(data, nowMs),
+    build_sha: data.buildSha || null,
     eligible_topics: eligible.length,
     verified_topics: totalVerified,
     overall_coverage_pct: eligible.length ? Math.round((totalVerified / eligible.length) * 1000) / 10 : 0,
@@ -66,7 +74,8 @@ function selfTest() {
   const result = analyzeFreshnessCoverage({
     ready: true,
     preview: false,
-    generatedAt: now.toISOString(),
+    generatedAt: '2026-08-22T23:00:00Z',
+    buildSha: 'a'.repeat(40),
     topics: [
       valid('fresh-ok', '2026-08-22T22:00:00Z', true),
       valid('fresh-pending', '2026-08-22T20:00:00Z', false),
@@ -77,6 +86,7 @@ function selfTest() {
   }, now);
   const byBucket = Object.fromEntries(result.buckets.map(item => [item.bucket, item]));
   if (result.eligible_topics !== 4 || result.verified_topics !== 2) throw new Error(`unexpected totals: ${JSON.stringify(result)}`);
+  if (result.dashboard_age_hours !== 1 || result.build_sha !== 'a'.repeat(40)) throw new Error('dashboard provenance mismatch');
   if (byBucket.fresh_0_6h.eligible !== 2 || byBucket.fresh_0_6h.verified !== 1 || byBucket.fresh_0_6h.coverage_pct !== 50) throw new Error('fresh bucket mismatch');
   if (byBucket.recent_6_24h.eligible !== 1 || byBucket.recent_6_24h.verified !== 1) throw new Error('recent bucket mismatch');
   if (byBucket.backlog_24h_plus.eligible !== 1 || byBucket.backlog_24h_plus.verified !== 0) throw new Error('backlog bucket mismatch');
@@ -89,10 +99,20 @@ async function main() {
   if (process.argv.includes('--self-test')) return selfTest();
   const dashboardUrl = process.env.DASHBOARD_URL || DEFAULT_DASHBOARD_URL;
   const timeoutMs = Math.max(1000, Number(process.env.FETCH_TIMEOUT_MS || 15000));
-  const response = await fetch(dashboardUrl, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(timeoutMs) });
+  const maxDashboardAgeHours = Number(process.env.MAX_DASHBOARD_AGE_HOURS || 0);
+  const url = new URL(dashboardUrl);
+  url.searchParams.set('_radar_freshness', `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const response = await fetch(url, {
+    cache: 'no-store',
+    headers: { accept: 'application/json', 'cache-control': 'no-cache' },
+    signal: AbortSignal.timeout(timeoutMs)
+  });
   if (!response.ok) throw new Error(`dashboard HTTP ${response.status}`);
   const data = await response.json();
   const result = analyzeFreshnessCoverage(data, new Date());
+  if (maxDashboardAgeHours > 0 && (result.dashboard_age_hours == null || result.dashboard_age_hours > maxDashboardAgeHours)) {
+    throw new Error(`dashboard snapshot is stale: age=${result.dashboard_age_hours ?? 'unknown'}h max=${maxDashboardAgeHours}h build=${result.build_sha || 'unknown'}`);
+  }
   console.log(JSON.stringify(result, null, 2));
 }
 
