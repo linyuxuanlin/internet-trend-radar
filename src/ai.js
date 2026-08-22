@@ -62,14 +62,17 @@ function inferenceErrorMessages(err) {
 }
 
 function errorDetailSlug(messages) {
-  const detail = String(messages?.[0] || messages?.[1] || '')
-    .toLowerCase()
-    .replace(/\b(?:error|aierror)\b/g, ' ')
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .replace(/-{2,}/g, '-')
-    .slice(0, 72);
-  return detail || null;
+  for (const message of Array.isArray(messages) ? messages : []) {
+    const detail = String(message || '')
+      .toLowerCase()
+      .replace(/\b(?:error|aierror)\b/g, ' ')
+      .replace(/[^a-z0-9._-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .replace(/-{2,}/g, '-')
+      .slice(0, 72);
+    if (detail) return detail;
+  }
+  return null;
 }
 
 function formatInferenceError(err) {
