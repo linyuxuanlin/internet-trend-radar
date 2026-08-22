@@ -8,6 +8,11 @@ if (dashboard.preview !== false || dashboard.ready !== true) {
   throw new Error('opportunities require real dashboard');
 }
 
+const buildSha = String(dashboard.buildSha || '').trim().toLowerCase();
+if (!/^[0-9a-f]{40}$/.test(buildSha)) {
+  throw new Error(`opportunities require stamped dashboard buildSha; got: ${buildSha || '<empty>'}`);
+}
+
 function usableAI(topic) {
   const summary = String(topic.ai_summary || '').trim();
   const why = String(topic.ai_why_now || '').trim();
@@ -39,11 +44,12 @@ const opportunities = topics.map(t => ({
 }));
 
 const payload = {
-  generatedAt: new Date().toISOString(),
+  generatedAt: dashboard.generatedAt || new Date().toISOString(),
+  buildSha,
   status: opportunities.length ? 'healthy' : 'degraded',
   provider: dashboard.ai?.provider || 'cloudflare-workers-ai',
   opportunities
 };
 
 await writeFile(outputPath, JSON.stringify(payload, null, 2) + '\n');
-console.log(`Wrote ${opportunities.length} quality-filtered opportunities`);
+console.log(`Wrote ${opportunities.length} quality-filtered opportunities for build ${buildSha}`);
