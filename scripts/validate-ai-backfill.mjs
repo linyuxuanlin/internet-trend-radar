@@ -8,14 +8,16 @@ function assert(condition, message) {
 const goodSummary = '多个真实来源正在围绕同一事件集中报道，核心变化是产品能力从试验阶段进入可被普通用户直接使用的阶段。';
 const goodWhy = '过去数小时内不同来源同时出现相关条目，并且排名和覆盖面同步上升，说明讨论正在从单一社区扩散到更广泛受众。';
 const goodOpp = [{ idea: '面向具体用户做一个可在一天内验证需求的小工具', rationale: '先通过搜索和评论中的重复问题验证是否存在稳定痛点，再决定是否扩大投入' }];
+const goodPayload = { summary: goodSummary, why_now: goodWhy, opportunities: goodOpp, risks: '需继续核对真实用户需求，避免把短时讨论误判为长期需求。' };
 
 assert(isStoredAIValid({ ai_summary: goodSummary, ai_why_now: goodWhy, ai_opportunities_json: JSON.stringify(goodOpp) }), 'valid stored AI should pass');
 assert(!isStoredAIValid({ ai_summary: '当前热度较高，值得关注后续发展。', ai_why_now: goodWhy, ai_opportunities_json: JSON.stringify(goodOpp) }), 'low-value summary must fail public quality gate');
 
-function makeBackfillDb({ validModelOutput }) {
+function makeBackfillDb({ validModelOutput, fallbackValid = false, disableFallback = false }) {
   const updates = [];
   const attempts = [];
   const binds = [];
+  const aiCalls = [];
   const topic = {
     id: 'topic-1', canonical_title: '测试真实趋势', category: '科技', current_score: 80, breakout_score: 75,
     source_count: 3, ai_summary: null, ai_why_now: null, ai_opportunities_json: null, ai_updated_at: null
@@ -24,6 +26,8 @@ function makeBackfillDb({ validModelOutput }) {
     updates,
     attempts,
     binds,
+    aiCalls,
+    AI_DISABLE_FALLBACK: disableFallback ? '1' : undefined,
     prepare(sql) {
       if (sql.includes('SELECT * FROM topics')) {
         return {
@@ -64,18 +68,19 @@ function makeBackfillDb({ validModelOutput }) {
       throw new Error(`unexpected backfill SQL: ${sql}`);
     },
     AI: {
-      async run() {
-        return validModelOutput
-          ? { response: JSON.stringify({ summary: goodSummary, why_now: goodWhy, opportunities: goodOpp, risks: '需继续核对真实用户需求，避免把短时讨论误判为长期需求。' }) }
-          : { response: JSON.stringify({ summary: '太短', why_now: '也太短', opportunities: [] }) };
+      async run(model, request) {
+        aiCalls.push({ model, request });
+        if (validModelOutput) return { response: JSON.stringify(goodPayload) };
+        if (fallbackValid && aiCalls.length === 2) return { response: goodPayload };
+        return { response: JSON.stringify({ summary: '太短', why_now: '也太短', opportunities: [] }) };
       }
     }
   };
 }
 
 {
-  const fixture = makeBackfillDb({ validModelOutput: false });
-  const result = await enrichTopTopics({ DB: fixture, AI: fixture.AI }, { backfillOnly: true });
+  const fixture = makeBackfillDb({ validModelOutput: false, disableFallback: true });
+  const result = await enrichTopTopics({ DB: fixture, AI: fixture.AI, AI_DISABLE_FALLBACK: fixture.AI_DISABLE_FALLBACK }, { backfillOnly: true });
   assert(result.selected === 1 && result.failed === 1 && result.updated === 0, `failed backfill result=${JSON.stringify(result)}`);
   assert(result.failureReasons['incomplete-output'] === 1, `failure reasons=${JSON.stringify(result.failureReasons)}`);
   assert(fixture.updates.some(x => x.kind === 'retry'), 'failed low-quality AI must write a retry timestamp');
@@ -89,7 +94,20 @@ function makeBackfillDb({ validModelOutput }) {
   const result = await enrichTopTopics({ DB: fixture, AI: fixture.AI }, { backfillOnly: true });
   assert(result.selected === 1 && result.failed === 0 && result.updated === 1, `successful backfill result=${JSON.stringify(result)}`);
   assert(fixture.updates.some(x => x.kind === 'full'), 'valid AI must persist complete analysis');
+  assert(fixture.aiCalls.length === 1, 'valid primary AI must not invoke fallback');
   assert(fixture.attempts.length === 1 && fixture.attempts[0][3] === 1 && fixture.attempts[0][4] === null, 'successful AI inference must persist a successful attempt');
+}
+
+{
+  const fixture = makeBackfillDb({ validModelOutput: false, fallbackValid: true });
+  const result = await enrichTopTopics({ DB: fixture, AI: fixture.AI }, { backfillOnly: true });
+  assert(result.updated === 1 && result.failed === 0, `structured fallback result=${JSON.stringify(result)}`);
+  assert(fixture.aiCalls.length === 2, `structured fallback call count=${fixture.aiCalls.length}`);
+  const fallback = fixture.aiCalls[1];
+  assert(fallback.model === '@cf/meta/llama-3.1-8b-instruct-fast', `fallback model=${fallback.model}`);
+  assert(fallback.request?.response_format?.type === 'json_schema', 'fallback must request JSON schema mode');
+  assert(fallback.request?.response_format?.json_schema?.required?.includes('summary'), 'fallback schema must require summary');
+  assert(fixture.updates.some(x => x.kind === 'full'), 'object response from JSON mode must persist complete analysis');
 }
 
 const invalidTopic = {
@@ -118,4 +136,4 @@ const good = dashboard.topics.find(x => x.id === 'good-ai');
 assert(bad.ai_summary === null && bad.ai_why_now === null && bad.opportunities.length === 0 && bad.ai_verified === false, 'invalid historical AI must be hidden from public API');
 assert(good.ai_summary === goodSummary && good.opportunities.length === 1, 'valid AI must remain visible');
 
-console.log('AI backlog retry fairness, attempt diagnostics, and public quality gate validated');
+console.log('AI backlog retry fairness, structured fallback, attempt diagnostics, and public quality gate validated');
