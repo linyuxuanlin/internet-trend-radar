@@ -121,7 +121,7 @@ async function runModel(env, model, topic, evidence, { structured = false } = {}
       { role: 'system', content: '严格基于证据，不捏造事实，不承诺收益。' },
       { role: 'user', content: buildPrompt(topic, evidence) }
     ],
-    max_completion_tokens: 900,
+    max_tokens: 900,
     temperature: structured ? 0.1 : 0.2
   };
   if (structured) request.response_format = { type: 'json_schema', json_schema: AI_RESPONSE_SCHEMA };
