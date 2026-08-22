@@ -30,6 +30,7 @@ jobs:
           node scripts/validate-ai-blocked-reasons.mjs
           node scripts/validate-ai-backfill.mjs
           node scripts/validate-scheduled-ai-backfill.mjs
+          node scripts/validate-ai-model-diagnostics.mjs
           node scripts/validate-dailyhot-fallback.mjs
           node scripts/validate-dailyhot-live.mjs
 
@@ -55,6 +56,9 @@ jobs:
           const deployedHasAttemptDiagnostics = attemptFields.every(key => key in d.ai);
           if (!deployedHasAttemptDiagnostics) {
             console.log('::warning::Deployed Worker predates AI attempt diagnostics; this PR will require these fields after deployment');
+          }
+          if (!Array.isArray(d.ai.model_stats_24h)) {
+            console.log('::warning::Deployed Worker predates per-model AI diagnostics; this PR will expose model_stats_24h after deployment');
           }
           const allowed = new Set([null,'missing-ai-and-db-binding','missing-db-binding','d1-schema-incomplete','d1-schema-probe-failed','missing-ai-binding','no-eligible-topics','inference-not-run','outputs-failed-quality-gate','partial-ai-coverage','ai-readiness-query-failed']);
           if (!allowed.has(d.ai.blocked_reason)) throw new Error(`unknown live blocker: ${d.ai.blocked_reason}`);
@@ -85,7 +89,8 @@ jobs:
               recent_attempts_24h: d.ai.recent_attempts_24h ?? null,
               recent_successes_24h: d.ai.recent_successes_24h ?? null,
               recent_failures_24h: d.ai.recent_failures_24h ?? null,
-              recent_failure_reasons: d.ai.recent_failure_reasons ?? null
+              recent_failure_reasons: d.ai.recent_failure_reasons ?? null,
+              model_stats_24h: d.ai.model_stats_24h ?? null
             }
           };
           console.log(JSON.stringify(snapshot, null, 2));
