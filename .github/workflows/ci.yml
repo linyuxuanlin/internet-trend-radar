@@ -140,8 +140,8 @@ jobs:
           node scripts/probe-degraded-sources.mjs
           node scripts/normalize-source-summaries.mjs
           node scripts/enrich-ai-opportunities.mjs
-          node scripts/write-opportunities.mjs
           BUILD_SHA="$GITHUB_SHA" node scripts/stamp-build-provenance.mjs
+          node scripts/write-opportunities.mjs
           node scripts/write-health-manifest.mjs
           MIN_HEALTHY_SOURCES=14 MIN_DIRECT_CN_SOURCES=10 node scripts/validate-real-dashboard.mjs
           node scripts/validate-opportunities.mjs
@@ -167,4 +167,4 @@ jobs:
           DASHBOARD_URL=http://127.0.0.1:4173/data/dashboard.json MIN_HEALTHY_SOURCES=14 MIN_DIRECT_CN_SOURCES=10 node scripts/validate-real-dashboard.mjs
           DASHBOARD_URL=http://127.0.0.1:4173/data/dashboard.json EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-build-provenance.mjs
           DASHBOARD_URL=http://127.0.0.1:4173/data/dashboard.json HEALTH_URL=http://127.0.0.1:4173/data/health.json EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-health-manifest.mjs
-          OPPORTUNITIES_URL=http://127.0.0.1:4173/data/opportunities.json node scripts/validate-opportunities-live.mjs
+          OPPORTUNITIES_URL=http://127.0.0.1:4173/data/opportunities.json EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-opportunities-live.mjs
