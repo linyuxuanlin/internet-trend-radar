@@ -34,6 +34,17 @@ function collectionFailure(summary) {
   return new Error(`collection produced no real items${detail ? ` (${detail})` : ''}`);
 }
 
+async function enrichAIWithoutBlockingCollection(env) {
+  if (!env.AI) return { skipped: true, reason: 'missing-ai-binding' };
+  try {
+    return await enrichTopTopics(env);
+  } catch (err) {
+    const error = String(err?.message || err);
+    console.error('AI enrichment failed after real collection; preserving collected data', err);
+    return { failed: true, error };
+  }
+}
+
 export async function collectAll(env) {
   if (!env.DB) throw new Error('missing DB binding');
 
@@ -73,7 +84,7 @@ export async function collectAll(env) {
     throw new Error(`collection stored ${realItemCount} real items but produced 0 topics`);
   }
 
-  const ai = await enrichTopTopics(env);
+  const ai = await enrichAIWithoutBlockingCollection(env);
   return {
     ok: true,
     realItemCount,
