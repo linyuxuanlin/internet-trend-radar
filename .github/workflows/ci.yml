@@ -51,17 +51,37 @@ jobs:
           for (const key of required) if (!(key in d.ai)) throw new Error(`live /api/debug missing ai.${key}`);
           const allowed = new Set([null,'missing-ai-and-db-binding','missing-db-binding','d1-schema-incomplete','d1-schema-probe-failed','missing-ai-binding','no-eligible-topics','inference-not-run','outputs-failed-quality-gate','partial-ai-coverage','ai-readiness-query-failed']);
           if (!allowed.has(d.ai.blocked_reason)) throw new Error(`unknown live blocker: ${d.ai.blocked_reason}`);
-          console.log(JSON.stringify({
-            binding: d.ai.binding,
-            model: d.ai.model,
-            eligible_topics: d.ai.eligible_topics,
-            attempted_topics: d.ai.attempted_topics,
-            verified_topics: d.ai.verified_topics,
-            pending_topics: d.ai.pending_topics,
-            stale_topics: d.ai.stale_topics,
-            ready_for_inference: d.ai.ready_for_inference,
-            blocked_reason: d.ai.blocked_reason
-          }, null, 2));
+          const snapshot = {
+            schema: d.schema ? {
+              ok: d.schema.ok,
+              error: d.schema.error,
+              tables: d.schema.tables,
+              bootstrap_attempted: d.schema.bootstrap_attempted,
+              bootstrap_ok: d.schema.bootstrap_ok,
+              bootstrap_error_code: d.schema.bootstrap_error_code ?? null,
+              bootstrap_error: d.schema.bootstrap_error ?? null,
+              bootstrap_failed_statement_index: d.schema.bootstrap_failed_statement_index ?? null,
+              bootstrap_statement_count: d.schema.bootstrap_statement_count ?? null,
+              bootstrap_failed_statement: d.schema.bootstrap_failed_statement ?? null,
+              bootstrap_cause: d.schema.bootstrap_cause ?? null
+            } : null,
+            ai: {
+              binding: d.ai.binding,
+              model: d.ai.model,
+              eligible_topics: d.ai.eligible_topics,
+              attempted_topics: d.ai.attempted_topics,
+              verified_topics: d.ai.verified_topics,
+              pending_topics: d.ai.pending_topics,
+              stale_topics: d.ai.stale_topics,
+              ready_for_inference: d.ai.ready_for_inference,
+              blocked_reason: d.ai.blocked_reason
+            }
+          };
+          console.log(JSON.stringify(snapshot, null, 2));
+          if (d.ai.blocked_reason === 'd1-schema-incomplete') {
+            const detail = d.schema?.bootstrap_error || d.schema?.error || 'no bootstrap detail exposed by deployed Worker';
+            console.log(`::warning::Production D1 schema is incomplete: ${String(detail).replace(/\r?\n/g, ' ')}`);
+          }
           NODE
 
       - name: Validate Pages patch

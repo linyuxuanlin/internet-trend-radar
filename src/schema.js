@@ -125,6 +125,20 @@ const SCHEMA_STATEMENTS = SCHEMA_SQL
 
 const schemaPromises = new WeakMap();
 
+export class D1SchemaBootstrapError extends Error {
+  constructor({ statementIndex, statementCount, statement, cause }) {
+    const preview = String(statement || '').replace(/\s+/g, ' ').slice(0, 160);
+    const causeMessage = String(cause?.message || cause || 'unknown D1 error');
+    super(`D1 schema bootstrap failed at statement ${statementIndex}/${statementCount} (${preview}): ${causeMessage}`, { cause });
+    this.name = 'D1SchemaBootstrapError';
+    this.code = 'D1_SCHEMA_BOOTSTRAP_FAILED';
+    this.statementIndex = statementIndex;
+    this.statementCount = statementCount;
+    this.statementPreview = preview;
+    this.causeMessage = causeMessage;
+  }
+}
+
 async function executeSchemaStatement(db, statement) {
   // Prefer D1's prepared-statement API for single static schema statements. This keeps
   // bootstrap on the same Worker Binding path used by normal queries.
@@ -157,9 +171,12 @@ async function bootstrapSchema(db) {
     try {
       results.push(await executeSchemaStatement(db, statement));
     } catch (error) {
-      const preview = statement.replace(/\s+/g, ' ').slice(0, 120);
-      const message = String(error?.message || error);
-      throw new Error(`D1 schema bootstrap failed at statement ${index + 1}/${SCHEMA_STATEMENTS.length} (${preview}): ${message}`, { cause: error });
+      throw new D1SchemaBootstrapError({
+        statementIndex: index + 1,
+        statementCount: SCHEMA_STATEMENTS.length,
+        statement,
+        cause: error
+      });
     }
   }
   return { statementCount: SCHEMA_STATEMENTS.length, results };
