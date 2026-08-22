@@ -4,16 +4,11 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-let execCount = 0;
+const executed = [];
 const db = {
   async exec(sql) {
-    execCount++;
+    executed.push(sql);
     assert(!/PRAGMA\s+foreign_keys\s*=\s*(ON|1)/i.test(sql), 'schema bootstrap must not toggle D1 foreign_keys');
-    assert(sql.includes('CREATE TABLE IF NOT EXISTS sources'), 'schema bootstrap must create sources');
-    assert(sql.includes('CREATE TABLE IF NOT EXISTS raw_items'), 'schema bootstrap must create raw_items');
-    assert(sql.includes('CREATE TABLE IF NOT EXISTS topics'), 'schema bootstrap must create topics');
-    assert(sql.includes('CREATE TABLE IF NOT EXISTS topic_snapshots'), 'schema bootstrap must create topic_snapshots');
-    assert(sql.includes('CREATE TABLE IF NOT EXISTS topic_sources'), 'schema bootstrap must create topic_sources');
     return { count: 1, duration: 1 };
   }
 };
@@ -21,6 +16,32 @@ const db = {
 const first = await ensureSchema({ DB: db });
 const second = await ensureSchema({ DB: db });
 assert(first.ok === true && second.ok === true, 'schema bootstrap must succeed');
-assert(execCount === 1, `schema bootstrap should be cached per binding, execCount=${execCount}`);
+assert(executed.length > 1, 'schema bootstrap must execute statements progressively');
+for (const table of ['sources', 'raw_items', 'topics', 'topic_snapshots', 'topic_sources', 'subscribers', 'digests']) {
+  assert(executed.some(sql => sql.includes(`CREATE TABLE IF NOT EXISTS ${table}`)), `schema bootstrap must create ${table}`);
+}
+const cachedCount = executed.length;
+await ensureSchema({ DB: db });
+assert(executed.length === cachedCount, 'successful schema bootstrap must be cached per binding');
 
-console.log('D1-compatible schema bootstrap validated: no foreign_keys pragma and required tables are created');
+let attempts = 0;
+const failingDb = {
+  async exec(sql) {
+    attempts++;
+    if (sql.includes('CREATE TABLE IF NOT EXISTS topics')) throw new Error('simulated D1 DDL rejection');
+    return { count: 1, duration: 1 };
+  }
+};
+let failure = null;
+try {
+  await ensureSchema({ DB: failingDb });
+} catch (error) {
+  failure = error;
+}
+assert(failure, 'schema bootstrap must surface D1 DDL failures');
+assert(String(failure.message).includes('CREATE TABLE IF NOT EXISTS topics'), 'failure must name the rejected statement');
+const firstAttemptCount = attempts;
+try { await ensureSchema({ DB: failingDb }); } catch {}
+assert(attempts > firstAttemptCount, 'failed schema bootstrap must clear cache so a later request can retry');
+
+console.log(`D1 progressive schema bootstrap validated across ${executed.length} statements with precise retryable failure diagnostics`);

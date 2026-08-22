@@ -118,22 +118,41 @@ INSERT OR IGNORE INTO sources(id,name,region,kind) VALUES
 ('xiaohongshu','小红书','cn','external-bridge');
 `;
 
-// Cloudflare D1 already enforces foreign keys for every query. Do not prepend
-// `PRAGMA foreign_keys = ON` here: D1 runs queries in implicit transactions and
-// does not allow user code to toggle that setting in a query/migration. If that
-// PRAGMA fails at the start of db.exec(), none of the CREATE TABLE statements run.
-//
+// D1's exec() accepts multiple statements, but one incompatible statement aborts the
+// remainder and historically left a fresh database with no useful schema. Execute each
+// top-level statement independently so successful DDL is retained and any remaining
+// incompatibility is reported with the exact failing statement.
+const SCHEMA_STATEMENTS = SCHEMA_SQL
+  .split(';')
+  .map(statement => statement.trim())
+  .filter(Boolean);
+
 // A Worker isolate can observe more than one DB mock/binding over its lifetime in tests,
 // previews, or multi-environment reuse. Cache per D1 binding rather than globally so a
 // successful bootstrap for one binding can never suppress schema initialization for another.
 const schemaPromises = new WeakMap();
+
+async function bootstrapSchema(db) {
+  const results = [];
+  for (let index = 0; index < SCHEMA_STATEMENTS.length; index++) {
+    const statement = SCHEMA_STATEMENTS[index];
+    try {
+      results.push(await db.exec(`${statement};`));
+    } catch (error) {
+      const preview = statement.replace(/\s+/g, ' ').slice(0, 120);
+      const message = String(error?.message || error);
+      throw new Error(`D1 schema bootstrap failed at statement ${index + 1}/${SCHEMA_STATEMENTS.length} (${preview}): ${message}`, { cause: error });
+    }
+  }
+  return { statementCount: SCHEMA_STATEMENTS.length, results };
+}
 
 export async function ensureSchema(env) {
   if (!env.DB) return { ok: false, reason: 'missing-db' };
   const db = env.DB;
   let promise = schemaPromises.get(db);
   if (!promise) {
-    promise = db.exec(SCHEMA_SQL)
+    promise = bootstrapSchema(db)
       .then(result => ({ ok: true, result }))
       .catch(error => {
         schemaPromises.delete(db);

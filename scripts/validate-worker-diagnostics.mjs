@@ -86,9 +86,8 @@ let schemaReady = false;
 let schemaExecCount = 0;
 const freshD1 = {
   async exec(sql) {
-    assert(sql.includes('CREATE TABLE IF NOT EXISTS topics'), 'schema bootstrap must create topics');
-    schemaReady = true;
     schemaExecCount++;
+    if (sql.includes('CREATE TABLE IF NOT EXISTS topics')) schemaReady = true;
     return { count: 1 };
   },
   prepare(sql) {
@@ -118,7 +117,8 @@ const freshD1 = {
   }
 };
 const freshD1Dashboard = await parse(await worker.fetch(new Request('https://example.test/api/dashboard'), { DB: freshD1 }));
-assert(schemaExecCount === 1, `fresh D1 schema bootstrap count=${schemaExecCount}`);
+assert(schemaExecCount > 1, `fresh D1 progressive schema bootstrap count=${schemaExecCount}`);
+assert(schemaReady, 'fresh D1 progressive bootstrap must create topics before readiness query');
 assert(freshD1Dashboard.status === 200, `fresh D1 dashboard status=${freshD1Dashboard.status}`);
 assert(freshD1Dashboard.body.preview === false && freshD1Dashboard.body.ready === true, 'fresh D1 dashboard must be real-data ready');
 assert(freshD1Dashboard.body.fallback == null, 'healthy D1 dashboard must not use fallback');
