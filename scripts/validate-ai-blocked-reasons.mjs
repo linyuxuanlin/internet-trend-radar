@@ -10,7 +10,7 @@ async function debug(env) {
   return response.json();
 }
 
-function readyDB({ eligible = 4, attempted = 0, verified = 0, stale = 0 } = {}) {
+function readyDB({ eligible = 4, attempted = 0, verified = 0, stale = 0, quota = false } = {}) {
   return {
     prepare(sql) {
       if (sql.includes('sqlite_master')) return {
@@ -29,6 +29,14 @@ function readyDB({ eligible = 4, attempted = 0, verified = 0, stale = 0 } = {}) 
       if (sql.includes('COALESCE(ai_summary')) return { async first() { return { count: verified }; } };
       if (sql.includes("julianday(ai_updated_at) < julianday('now','-6 hours')")) return { async first() { return { count: stale }; } };
       if (sql.includes('SELECT MAX(ai_updated_at)')) return { async first() { return { value: attempted ? '2026-08-21T18:30:00.000Z' : null }; } };
+      if (sql.includes("failure_reason LIKE 'inference-error:quota-or-capacity%'")) return {
+        async first() {
+          return quota ? {
+            attempted_at: new Date().toISOString(),
+            failure_reason: 'inference-error:quota-or-capacity:AiError'
+          } : null;
+        }
+      };
       throw new Error(`unexpected query: ${sql}`);
     }
   };
@@ -52,6 +60,15 @@ assert(badOutput.ai.blocked_reason === 'outputs-failed-quality-gate', `bad-outpu
 const partial = await debug({ DB: readyDB({ eligible: 6, attempted: 5, verified: 3, stale: 1 }), AI: { run() {} } });
 assert(partial.ai.blocked_reason === 'partial-ai-coverage', `partial reason=${partial.ai.blocked_reason}`);
 assert(partial.ai.pending_topics === 3, `partial pending=${partial.ai.pending_topics}`);
+
+const quotaBlocked = await debug({ DB: readyDB({ eligible: 6, attempted: 5, verified: 3, quota: true }), AI: { run() {} } });
+assert(quotaBlocked.ai.blocked_reason === 'daily-ai-quota-exhausted', `quota reason=${quotaBlocked.ai.blocked_reason}`);
+assert(quotaBlocked.ai.quota_exhausted === true, 'quota exhaustion must be explicit');
+assert(Boolean(quotaBlocked.ai.quota_detected_at), 'quota detection timestamp missing');
+assert(Boolean(quotaBlocked.ai.quota_retry_after), 'quota retry timestamp missing');
+assert(Date.parse(quotaBlocked.ai.quota_retry_after) > Date.now(), `quota retry must be in future: ${quotaBlocked.ai.quota_retry_after}`);
+assert(quotaBlocked.ai.quota_failure_reason.startsWith('inference-error:quota-or-capacity'), `quota failure reason=${quotaBlocked.ai.quota_failure_reason}`);
+assert(quotaBlocked.ai.ready_for_inference === false, 'quota-exhausted AI must not advertise inference readiness');
 
 const healthy = await debug({ DB: readyDB({ eligible: 6, attempted: 6, verified: 6 }), AI: { run() {} } });
 assert(healthy.ai.blocked_reason === null, `healthy reason=${healthy.ai.blocked_reason}`);
