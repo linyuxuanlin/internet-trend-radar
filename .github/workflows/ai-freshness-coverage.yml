@@ -1,0 +1,24 @@
+name: AI Freshness Coverage
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  freshness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate freshness coverage analyzer
+        run: |
+          node --check scripts/analyze-ai-freshness-coverage.mjs
+          node scripts/analyze-ai-freshness-coverage.mjs --self-test
+      - name: Probe live real dashboard coverage
+        continue-on-error: true
+        env:
+          DASHBOARD_URL: https://linyuxuanlin.github.io/internet-trend-radar/data/dashboard.json
+          FETCH_TIMEOUT_MS: 15000
+        run: |
+          node scripts/analyze-ai-freshness-coverage.mjs
