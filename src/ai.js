@@ -12,6 +12,17 @@ function hasLowValuePhrase(text) {
   return /值得关注|热度较高|持续升温|具有重要意义|前景广阔|机会巨大/.test(String(text || ''));
 }
 
+export function isStoredAIValid(topic) {
+  if (!topic) return false;
+  const summary = String(topic.ai_summary || '').trim();
+  const whyNow = String(topic.ai_why_now || '').trim();
+  const opportunities = safeJsonParse(topic.ai_opportunities_json, []);
+  if (summary.length < 20 || whyNow.length < 20) return false;
+  if (!Array.isArray(opportunities) || opportunities.length < 1) return false;
+  if (hasLowValuePhrase(summary) || hasLowValuePhrase(whyNow)) return false;
+  return opportunities.every(o => String(o?.idea || '').trim() && String(o?.rationale || '').trim());
+}
+
 function normalizeAnalysis(parsed, model, topicTitle) {
   if (!parsed || typeof parsed !== 'object') return null;
   const summary = String(parsed.summary || '').trim();
@@ -67,35 +78,72 @@ export async function analyzeTopic(env, topic, evidence) {
   }
 }
 
-export async function enrichTopTopics(env) {
-  const topN = Math.max(1, Math.min(20, Number(env.AI_TOP_N || 8)));
-  const { results = [] } = await env.DB.prepare(`
-    SELECT * FROM topics
-    WHERE current_score >= 45
-      AND (
-        ai_updated_at IS NULL
-        OR julianday(ai_updated_at) < julianday('now','-6 hours')
-        OR ai_summary IS NULL OR length(trim(ai_summary)) < 20
-        OR ai_why_now IS NULL OR length(trim(ai_why_now)) < 20
-        OR ai_opportunities_json IS NULL OR ai_opportunities_json = '[]'
-        OR ai_summary LIKE '%值得关注%' OR ai_summary LIKE '%热度较高%' OR ai_summary LIKE '%持续升温%'
-        OR ai_summary LIKE '%具有重要意义%' OR ai_summary LIKE '%前景广阔%' OR ai_summary LIKE '%机会巨大%'
-        OR ai_why_now LIKE '%值得关注%' OR ai_why_now LIKE '%热度较高%' OR ai_why_now LIKE '%持续升温%'
-        OR ai_why_now LIKE '%具有重要意义%' OR ai_why_now LIKE '%前景广阔%' OR ai_why_now LIKE '%机会巨大%'
-      )
-    ORDER BY
-      CASE WHEN ai_updated_at IS NULL OR ai_summary IS NULL OR ai_why_now IS NULL OR ai_opportunities_json IS NULL THEN 0 ELSE 1 END,
-      breakout_score DESC,
-      current_score DESC
-    LIMIT ?
-  `).bind(topN).all();
+const INVALID_STORED_AI_SQL = `(
+  ai_summary IS NULL OR length(trim(ai_summary)) < 20
+  OR ai_why_now IS NULL OR length(trim(ai_why_now)) < 20
+  OR ai_opportunities_json IS NULL OR ai_opportunities_json = '[]'
+  OR ai_summary LIKE '%值得关注%' OR ai_summary LIKE '%热度较高%' OR ai_summary LIKE '%持续升温%'
+  OR ai_summary LIKE '%具有重要意义%' OR ai_summary LIKE '%前景广阔%' OR ai_summary LIKE '%机会巨大%'
+  OR ai_why_now LIKE '%值得关注%' OR ai_why_now LIKE '%热度较高%' OR ai_why_now LIKE '%持续升温%'
+  OR ai_why_now LIKE '%具有重要意义%' OR ai_why_now LIKE '%前景广阔%' OR ai_why_now LIKE '%机会巨大%'
+)`;
+
+export async function enrichTopTopics(env, options = {}) {
+  const topN = Math.max(1, Math.min(20, Number(options.topN || env.AI_TOP_N || 8)));
+  const retryMinutes = Math.max(5, Math.min(360, Number(env.AI_RETRY_MINUTES || 30)));
+  const refreshHours = Math.max(1, Math.min(24, Number(env.AI_REFRESH_HOURS || 6)));
+  const backfillOnly = options.backfillOnly === true;
+  const retryModifier = `-${retryMinutes} minutes`;
+  const refreshModifier = `-${refreshHours} hours`;
+
+  const candidateSql = backfillOnly
+    ? `
+      SELECT * FROM topics
+      WHERE current_score >= 45
+        AND ${INVALID_STORED_AI_SQL}
+        AND (ai_updated_at IS NULL OR julianday(ai_updated_at) < julianday('now', ?))
+      ORDER BY
+        CASE WHEN ai_updated_at IS NULL THEN 0 ELSE 1 END,
+        breakout_score DESC,
+        current_score DESC
+      LIMIT ?`
+    : `
+      SELECT * FROM topics
+      WHERE current_score >= 45
+        AND (
+          (${INVALID_STORED_AI_SQL} AND (ai_updated_at IS NULL OR julianday(ai_updated_at) < julianday('now', ?)))
+          OR (NOT ${INVALID_STORED_AI_SQL} AND ai_updated_at IS NOT NULL AND julianday(ai_updated_at) < julianday('now', ?))
+        )
+      ORDER BY
+        CASE WHEN ${INVALID_STORED_AI_SQL} THEN 0 ELSE 1 END,
+        CASE WHEN ai_updated_at IS NULL THEN 0 ELSE 1 END,
+        breakout_score DESC,
+        current_score DESC
+      LIMIT ?`;
+
+  const stmt = env.DB.prepare(candidateSql);
+  const { results = [] } = backfillOnly
+    ? await stmt.bind(retryModifier, topN).all()
+    : await stmt.bind(retryModifier, refreshModifier, topN).all();
+
   let count = 0;
+  let failed = 0;
   for (const topic of results) {
     const { results: evidence = [] } = await env.DB.prepare(`SELECT source_id,title,url,rank,captured_at FROM topic_sources WHERE topic_id=? ORDER BY captured_at DESC LIMIT 12`).bind(topic.id).all();
     const analysis = await analyzeTopic(env, topic, evidence);
-    if (!analysis) continue;
-    await env.DB.prepare(`UPDATE topics SET ai_summary=?, ai_why_now=?, ai_opportunities_json=?, ai_risks=?, ai_updated_at=? WHERE id=?`).bind(analysis.summary, analysis.why_now, JSON.stringify(analysis.opportunities), analysis.risks, new Date().toISOString(), topic.id).run();
+    const now = new Date().toISOString();
+    if (!analysis) {
+      failed++;
+      // Missing/low-quality topics need a retry timestamp so one stubborn high-score topic
+      // cannot monopolize every batch and starve the rest of the historical backlog.
+      // Previously valid content is preserved if a stale refresh fails.
+      if (!isStoredAIValid(topic)) {
+        await env.DB.prepare(`UPDATE topics SET ai_updated_at=? WHERE id=?`).bind(now, topic.id).run();
+      }
+      continue;
+    }
+    await env.DB.prepare(`UPDATE topics SET ai_summary=?, ai_why_now=?, ai_opportunities_json=?, ai_risks=?, ai_updated_at=? WHERE id=?`).bind(analysis.summary, analysis.why_now, JSON.stringify(analysis.opportunities), analysis.risks, now, topic.id).run();
     count++;
   }
-  return count;
+  return { updated: count, failed, selected: results.length, backfillOnly, retryMinutes, refreshHours };
 }
