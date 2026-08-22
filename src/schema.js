@@ -127,18 +127,25 @@ const schemaPromises = new WeakMap();
 
 async function executeSchemaStatement(db, statement) {
   // Prefer D1's prepared-statement API for single static schema statements. This keeps
-  // execution on the same API path used for the rest of the Worker queries and avoids
-  // relying on exec()'s multi-query parser for bootstrap DDL.
+  // bootstrap on the same Worker Binding path used by normal queries.
   if (typeof db.prepare === 'function') {
-    const prepared = db.prepare(statement);
+    let prepared;
+    try {
+      prepared = db.prepare(statement);
+    } catch (prepareError) {
+      // Some deterministic test doubles intentionally only understand runtime SELECTs.
+      // Real D1 supports static prepared statements, so only fall back when prepare itself
+      // is unavailable for the statement. If run() fails, preserve that real D1 failure.
+      if (typeof db.exec === 'function') return db.exec(`${statement};`);
+      throw prepareError;
+    }
     if (!prepared || typeof prepared.run !== 'function') {
+      if (typeof db.exec === 'function') return db.exec(`${statement};`);
       throw new Error('D1 prepare() did not return a runnable statement');
     }
     return prepared.run();
   }
 
-  // Keep a narrow compatibility fallback for existing deterministic mocks/tests that only
-  // implement exec(). Real Cloudflare D1 bindings expose prepare().
   if (typeof db.exec === 'function') return db.exec(`${statement};`);
   throw new Error('D1 binding exposes neither prepare().run() nor exec()');
 }
