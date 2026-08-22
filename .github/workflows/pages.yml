@@ -1,9 +1,13 @@
 name: Deploy GitHub Pages
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - CI
     branches:
       - main
+    types:
+      - completed
   workflow_dispatch:
   schedule:
     - cron: '17 * * * *'
@@ -19,10 +23,15 @@ concurrency:
 
 jobs:
   deploy:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
+    env:
+      TARGET_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
     steps:
-      - name: Checkout
+      - name: Checkout verified revision
         uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
@@ -49,7 +58,7 @@ jobs:
           node scripts/normalize-source-summaries.mjs
           node scripts/enrich-ai-opportunities.mjs
           node scripts/write-opportunities.mjs
-          BUILD_SHA="$GITHUB_SHA" node scripts/stamp-build-provenance.mjs
+          BUILD_SHA="$TARGET_SHA" node scripts/stamp-build-provenance.mjs
           node scripts/write-health-manifest.mjs
       - name: Verify production real-data and AI gates
         env:
@@ -59,8 +68,8 @@ jobs:
           node scripts/validate-opportunities.mjs
           node scripts/validate-ai-assets.mjs
           node scripts/validate-ai-quality.mjs
-          EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-build-provenance.mjs
-          EXPECTED_BUILD_SHA="$GITHUB_SHA" node scripts/validate-health-manifest.mjs
+          EXPECTED_BUILD_SHA="$TARGET_SHA" node scripts/validate-build-provenance.mjs
+          EXPECTED_BUILD_SHA="$TARGET_SHA" node scripts/validate-health-manifest.mjs
       - name: Patch Pages frontend
         run: |
           node scripts/patch-pages-index.mjs
@@ -84,7 +93,7 @@ jobs:
           DASHBOARD_URL: ${{ steps.deployment.outputs.page_url }}data/dashboard.json
           HEALTH_URL: ${{ steps.deployment.outputs.page_url }}data/health.json
           OPPORTUNITIES_URL: ${{ steps.deployment.outputs.page_url }}data/opportunities.json
-          EXPECTED_BUILD_SHA: ${{ github.sha }}
+          EXPECTED_BUILD_SHA: ${{ env.TARGET_SHA }}
           MIN_HEALTHY_SOURCES: '14'
           MIN_DIRECT_CN_SOURCES: '10'
           REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu,ithome,solidot
