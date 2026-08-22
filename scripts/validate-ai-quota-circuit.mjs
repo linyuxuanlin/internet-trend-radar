@@ -66,4 +66,34 @@ assert(typeof result.retryAfter === 'string' && Date.parse(result.retryAfter) > 
 assert(candidateQueries === 0, `candidateQueries=${candidateQueries}`);
 assert(circuitInferenceCalls === 0, `circuitInferenceCalls=${circuitInferenceCalls}`);
 
-console.log('Workers AI daily quota classification and UTC-day circuit breaker validated');
+const candidateSqls = [];
+const priorityEnv = {
+  DB: {
+    prepare(sql) {
+      if (sql.includes('FROM ai_attempts') && sql.includes('quota-or-capacity')) {
+        return { async first() { return null; } };
+      }
+      if (sql.includes('SELECT * FROM topics')) {
+        candidateSqls.push(sql);
+        return {
+          bind() {
+            return { async all() { return { results: [] }; } };
+          }
+        };
+      }
+      if (sql.includes('DELETE FROM ai_attempts')) return { async run() {} };
+      throw new Error(`unexpected priority fixture SQL: ${sql}`);
+    }
+  }
+};
+
+await enrichTopTopics(priorityEnv, { backfillOnly: true, topN: 10 });
+await enrichTopTopics(priorityEnv, { backfillOnly: false, topN: 10 });
+assert(candidateSqls.length === 2, `candidate SQL count=${candidateSqls.length}`);
+for (const sql of candidateSqls) {
+  assert(sql.includes("julianday(last_seen_at) >= julianday('now','-6 hours')"), 'freshest 6h topics must receive first quota priority');
+  assert(sql.includes("julianday(last_seen_at) >= julianday('now','-24 hours')"), 'recent 24h topics must outrank historical backlog');
+  assert(sql.includes('breakout_score DESC, current_score DESC, source_count DESC, last_seen_at DESC'), 'priority tie-breakers must favor breakout, score, source breadth, then recency');
+}
+
+console.log('Workers AI daily quota circuit and freshness-first quota-aware candidate priority validated');
