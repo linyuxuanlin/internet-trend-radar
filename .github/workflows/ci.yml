@@ -25,6 +25,7 @@ jobs:
       - name: Validate worker diagnostics and source fallback
         timeout-minutes: 2
         run: |
+          node scripts/validate-d1-schema-bootstrap.mjs
           node scripts/validate-worker-diagnostics.mjs
           node scripts/validate-ai-blocked-reasons.mjs
           node scripts/validate-dailyhot-fallback.mjs
