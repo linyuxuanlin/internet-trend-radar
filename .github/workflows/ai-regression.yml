@@ -12,6 +12,8 @@ jobs:
 
       - name: Validate regression analyzer deterministically
         run: |
+          node scripts/validate-ai-quota-circuit.mjs
+
           cat > /tmp/ai-debug-good.json <<'JSON'
           {
             "generatedAt":"2026-08-22T14:00:00.000Z",
