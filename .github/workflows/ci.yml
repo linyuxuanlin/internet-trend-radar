@@ -28,6 +28,7 @@ jobs:
           node scripts/validate-d1-schema-bootstrap.mjs
           node scripts/validate-worker-diagnostics.mjs
           node scripts/validate-ai-blocked-reasons.mjs
+          node scripts/validate-ai-backfill.mjs
           node scripts/validate-dailyhot-fallback.mjs
           node scripts/validate-dailyhot-live.mjs
 
