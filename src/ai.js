@@ -28,7 +28,8 @@ function sanitizeErrorDetail(value) {
   return String(value || '')
     .replace(/https?:\/\/\S+/gi, '[url]')
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
-    .replace(/\b(?:bearer|token|api[_-]?key|authorization)\s*[:=]?\s*[^\s,;]+/gi, '$1=[redacted]')
+    .replace(/\bauthorization\s*[:=]?\s*(?:bearer\s+)?[^\s,;]+/gi, 'authorization=[redacted]')
+    .replace(/\b(?:bearer|token|api[_-]?key)\s*[:=]?\s*[^\s,;]+/gi, '[redacted]')
     .replace(/[\r\n\t]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
