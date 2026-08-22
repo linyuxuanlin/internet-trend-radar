@@ -24,9 +24,72 @@ function hasLowValuePhrase(text) {
   return /值得关注|热度较高|持续升温|具有重要意义|前景广阔|机会巨大/.test(String(text || ''));
 }
 
+function sanitizeErrorDetail(value) {
+  return String(value || '')
+    .replace(/https?:\/\/\S+/gi, '[url]')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
+    .replace(/\bauthorization\s*[:=]?\s*(?:bearer\s+)?[^\s,;]+/gi, 'authorization=[redacted]')
+    .replace(/\b(?:bearer|token|api[_-]?key)\s*[:=]?\s*[^\s,;]+/gi, '[redacted]')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function inferenceErrorMessages(err) {
+  const values = [
+    err?.message,
+    err?.cause?.message,
+    err?.error?.message,
+    err?.error,
+    err?.data?.message,
+    err?.data?.error?.message,
+    err?.response?.error?.message,
+    err?.response?.error
+  ];
+  const seen = new Set();
+  const messages = [];
+  for (const value of values) {
+    if (value == null) continue;
+    const text = sanitizeErrorDetail(typeof value === 'object' ? value?.message || '' : value);
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    messages.push(text);
+  }
+  if (!messages.length) {
+    const fallback = sanitizeErrorDetail(err);
+    if (fallback && fallback !== '[object Object]') messages.push(fallback);
+  }
+  return messages;
+}
+
+function errorDetailSlug(messages) {
+  for (const message of Array.isArray(messages) ? messages : []) {
+    const detail = String(message || '')
+      .toLowerCase()
+      .replace(/\b(?:error|aierror)\b/g, ' ')
+      .replace(/[^a-z0-9._-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .replace(/-{2,}/g, '-')
+      .slice(0, 72);
+    if (detail) return detail;
+  }
+  return null;
+}
+
+function formatInferenceError(err) {
+  const payload = {
+    name: sanitizeErrorDetail(err?.name || '') || null,
+    code: sanitizeErrorDetail(err?.code || '') || null,
+    status: sanitizeErrorDetail(err?.status || '') || null,
+    messages: inferenceErrorMessages(err).slice(0, 3)
+  };
+  return JSON.stringify(payload).slice(0, 600);
+}
+
 function classifyInferenceError(err, prefix = 'inference-error') {
   const rawCode = String(err?.code || err?.status || err?.name || '').trim();
-  const message = String(err?.message || err || '').toLowerCase();
+  const messages = inferenceErrorMessages(err);
+  const message = messages.join(' ').toLowerCase();
   let kind = 'unknown';
   if (/rate.?limit|too many requests|429/.test(message) || rawCode === '429') kind = 'rate-limit';
   else if (/quota|limit exceeded|capacity/.test(message)) kind = 'quota-or-capacity';
@@ -36,7 +99,9 @@ function classifyInferenceError(err, prefix = 'inference-error') {
   else if (/invalid.*request|bad request|schema|response_format|json_schema|400/.test(message) || rawCode === '400') kind = 'invalid-request';
   else if (/internal|upstream|gateway|service unavailable|502|503|504/.test(message) || ['502', '503', '504'].includes(rawCode)) kind = 'upstream';
   const code = rawCode && rawCode !== 'Error' ? rawCode.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 48) : null;
-  return `${prefix}:${kind}${code ? `:${code}` : ''}`;
+  const genericCode = !code || /^(?:AiError|Error)$/i.test(code);
+  const detail = genericCode && ['invalid-request', 'unknown'].includes(kind) ? errorDetailSlug(messages) : null;
+  return `${prefix}:${kind}${code ? `:${code}` : ''}${detail ? `:${detail}` : ''}`;
 }
 
 function isRecoverableInferenceFailure(reason) {
@@ -169,7 +234,7 @@ async function runStructuredFallback(env, topic, evidence, primary, primaryFailu
     const fallback = {
       analysis: null,
       failureReason: classifyInferenceError(fallbackErr, 'fallback-inference-error'),
-      rawText: String(fallbackErr?.message || fallbackErr).slice(0, 600) || primary?.rawText || '',
+      rawText: formatInferenceError(fallbackErr) || primary?.rawText || '',
       model: fallbackModel
     };
     return {
@@ -195,7 +260,7 @@ export async function analyzeTopicDetailed(env, topic, evidence) {
     const primary = {
       analysis: null,
       failureReason: primaryFailureReason,
-      rawText: String(err?.message || err).slice(0, 600),
+      rawText: formatInferenceError(err),
       model
     };
     if (env.AI_DISABLE_FALLBACK !== '1' && isRecoverableInferenceFailure(primaryFailureReason)) {

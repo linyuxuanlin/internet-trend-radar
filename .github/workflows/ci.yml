@@ -29,6 +29,7 @@ jobs:
           node scripts/validate-worker-diagnostics.mjs
           node scripts/validate-ai-blocked-reasons.mjs
           node scripts/validate-ai-backfill.mjs
+          node scripts/validate-ai-error-fingerprints.mjs
           node scripts/validate-scheduled-ai-backfill.mjs
           node scripts/validate-ai-model-diagnostics.mjs
           node scripts/validate-dailyhot-fallback.mjs
