@@ -20,5 +20,6 @@ jobs:
         env:
           DASHBOARD_URL: https://linyuxuanlin.github.io/internet-trend-radar/data/dashboard.json
           FETCH_TIMEOUT_MS: 15000
+          MAX_DASHBOARD_AGE_HOURS: 3
         run: |
           node scripts/analyze-ai-freshness-coverage.mjs
