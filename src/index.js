@@ -38,6 +38,7 @@ function classifyAIBlocker(ai, schemaOk = true) {
   if (!ai.binding) return 'missing-ai-binding';
   if (ai.eligible_topics === 0) return 'no-eligible-topics';
   if ((ai.pending_topics || 0) === 0) return null;
+  if (ai.quota_exhausted) return 'daily-ai-quota-exhausted';
   if ((ai.attempted_topics || 0) === 0) return 'inference-not-run';
   if ((ai.verified_topics || 0) === 0) return 'outputs-failed-quality-gate';
   return 'partial-ai-coverage';
@@ -102,6 +103,24 @@ function buildAttemptReasonsProbe(env, hours, byModel = false) {
     .catch(() => ({ results: [] }));
 }
 
+function buildDailyQuotaProbe(env) {
+  return Promise.resolve()
+    .then(() => env.DB.prepare(`
+      SELECT attempted_at, failure_reason FROM ai_attempts
+      WHERE success=0
+        AND (failure_reason LIKE 'inference-error:quota-or-capacity%' OR failure_reason LIKE 'fallback-inference-error:quota-or-capacity%')
+        AND substr(attempted_at,1,10)=substr(datetime('now'),1,10)
+      ORDER BY attempted_at DESC LIMIT 1
+    `).first())
+    .catch(() => null);
+}
+
+function nextUtcDayIso(now = new Date()) {
+  const next = new Date(now);
+  next.setUTCHours(24, 0, 0, 0);
+  return next.toISOString();
+}
+
 async function debugStatus(env) {
   const status = {
     db: Boolean(env.DB),
@@ -129,6 +148,10 @@ async function debugStatus(env) {
       last_updated_at: null,
       ready_for_inference: false,
       blocked_reason: null,
+      quota_exhausted: false,
+      quota_detected_at: null,
+      quota_retry_after: null,
+      quota_failure_reason: null,
       recent_attempts_1h: 0,
       recent_successes_1h: 0,
       recent_failures_1h: 0,
@@ -189,11 +212,12 @@ async function debugStatus(env) {
     const attemptedProbe = Promise.resolve()
       .then(() => env.DB.prepare(`SELECT COUNT(*) as count FROM topics WHERE current_score >= 45 AND ai_updated_at IS NOT NULL`).first())
       .catch(() => ({ count: null }));
+    const quotaProbe = buildDailyQuotaProbe(env);
     const attemptReasons1hProbe = buildAttemptReasonsProbe(env, 1, false);
     const modelReasons1hProbe = buildAttemptReasonsProbe(env, 1, true);
     const attemptReasons24hProbe = buildAttemptReasonsProbe(env, 24, false);
     const modelReasons24hProbe = buildAttemptReasonsProbe(env, 24, true);
-    const [raw, topics, sources, healthy, failed, lastSuccess, errors, aiEligible, aiAttempted, aiVerified, aiStale, aiLastUpdated, aiAttemptReasons1h, aiModelReasons1h, aiAttemptReasons24h, aiModelReasons24h] = await Promise.all([
+    const [raw, topics, sources, healthy, failed, lastSuccess, errors, aiEligible, aiAttempted, aiVerified, aiStale, aiLastUpdated, aiQuota, aiAttemptReasons1h, aiModelReasons1h, aiAttemptReasons24h, aiModelReasons24h] = await Promise.all([
       env.DB.prepare('SELECT COUNT(*) as count FROM raw_items').first(),
       env.DB.prepare('SELECT COUNT(*) as count FROM topics').first(),
       env.DB.prepare('SELECT COUNT(*) as count FROM sources').first(),
@@ -215,6 +239,7 @@ async function debugStatus(env) {
           AND ai_why_now NOT LIKE '%具有重要意义%' AND ai_why_now NOT LIKE '%前景广阔%' AND ai_why_now NOT LIKE '%机会巨大%'`).first(),
       env.DB.prepare(`SELECT COUNT(*) as count FROM topics WHERE current_score >= 45 AND ai_updated_at IS NOT NULL AND julianday(ai_updated_at) < julianday('now','-6 hours')`).first(),
       env.DB.prepare(`SELECT MAX(ai_updated_at) as value FROM topics WHERE ai_updated_at IS NOT NULL`).first(),
+      quotaProbe,
       attemptReasons1hProbe,
       modelReasons1hProbe,
       attemptReasons24hProbe,
@@ -235,6 +260,12 @@ async function debugStatus(env) {
     status.ai.pending_topics = Math.max(0, status.ai.eligible_topics - status.ai.verified_topics);
     status.ai.stale_topics = Number(aiStale?.count || 0);
     status.ai.last_updated_at = aiLastUpdated?.value || null;
+    if (aiQuota?.attempted_at) {
+      status.ai.quota_exhausted = true;
+      status.ai.quota_detected_at = aiQuota.attempted_at;
+      status.ai.quota_retry_after = nextUtcDayIso();
+      status.ai.quota_failure_reason = aiQuota.failure_reason || 'inference-error:quota-or-capacity';
+    }
 
     const oneHour = summarizeReasonWindow(aiAttemptReasons1h?.results || []);
     status.ai.recent_attempts_1h = oneHour.attempts;
@@ -250,7 +281,7 @@ async function debugStatus(env) {
     status.ai.recent_failure_reasons = day.failure_reasons;
     status.ai.model_stats_24h = summarizeModelAttempts(aiModelReasons24h?.results || []);
 
-    status.ai.ready_for_inference = status.ai.binding && status.ai.eligible_topics > 0 && status.ai.pending_topics > 0;
+    status.ai.ready_for_inference = status.ai.binding && status.ai.eligible_topics > 0 && status.ai.pending_topics > 0 && !status.ai.quota_exhausted;
     status.ai.blocked_reason = classifyAIBlocker(status.ai, true);
     status.ready = status.raw_items > 0 && status.topics > 0 && status.healthy_sources > 0;
   } catch (err) {
