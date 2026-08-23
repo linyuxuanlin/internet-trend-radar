@@ -34,10 +34,57 @@ function collectionFailure(summary) {
   return new Error(`collection produced no real items${detail ? ` (${detail})` : ''}`);
 }
 
+async function aiDailyPacing(env, now = new Date()) {
+  const dailyBudget = Math.max(24, Math.min(240, Number(env.AI_DAILY_MODEL_CALL_BUDGET || 96)));
+  const maxCallsPerTopic = env.AI_DISABLE_FALLBACK === '1' ? 1 : 2;
+  const utcHour = now.getUTCHours();
+  const cumulativeBudget = Math.ceil(dailyBudget * (utcHour + 1) / 24);
+  try {
+    const row = await env.DB.prepare(`
+      SELECT count(*) AS attempts FROM ai_attempts
+      WHERE substr(attempted_at,1,10)=substr(datetime('now'),1,10)
+    `).first();
+    const attemptsToday = Math.max(0, Number(row?.attempts || 0));
+    const callHeadroom = Math.max(0, cumulativeBudget - attemptsToday);
+    return {
+      dailyBudget,
+      cumulativeBudget,
+      attemptsToday,
+      callHeadroom,
+      topicBudget: Math.floor(callHeadroom / maxCallsPerTopic),
+      maxCallsPerTopic,
+      utcHour
+    };
+  } catch (err) {
+    console.warn('AI daily pacing probe failed; falling back to bounded per-run AI_TOP_N', err);
+    return {
+      dailyBudget,
+      cumulativeBudget,
+      attemptsToday: null,
+      callHeadroom: null,
+      topicBudget: Math.max(1, Math.min(20, Number(env.AI_TOP_N || 8))),
+      maxCallsPerTopic,
+      utcHour,
+      degraded: true
+    };
+  }
+}
+
 async function enrichAIWithoutBlockingCollection(env) {
   if (!env.AI) return { skipped: true, reason: 'missing-ai-binding' };
   try {
-    return await enrichTopTopics(env);
+    const pacing = await aiDailyPacing(env);
+    if (pacing.topicBudget <= 0) {
+      return {
+        skipped: true,
+        reason: 'daily-ai-budget-paced',
+        pacing
+      };
+    }
+    const configuredTopN = Math.max(1, Math.min(20, Number(env.AI_TOP_N || 8)));
+    const topN = Math.min(configuredTopN, pacing.topicBudget);
+    const result = await enrichTopTopics(env, { topN });
+    return { ...result, pacing: { ...pacing, selectedTopN: topN } };
   } catch (err) {
     const error = String(err?.message || err);
     console.error('AI enrichment failed after real collection; preserving collected data', err);
