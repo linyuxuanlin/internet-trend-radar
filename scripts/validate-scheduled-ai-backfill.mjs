@@ -32,6 +32,39 @@ if (!collector.includes('const ai = await enrichAIWithoutBlockingCollection(env)
   throw new Error('collectAll must use non-blocking AI enrichment wrapper');
 }
 
+if (!collector.includes('AI_DAILY_MODEL_CALL_BUDGET || 96')) {
+  throw new Error('collector must default to a bounded daily model-call budget');
+}
+if (!collector.includes("substr(attempted_at,1,10)=substr(datetime('now'),1,10)")) {
+  throw new Error('AI pacing must count real persisted attempts from the current UTC day');
+}
+if (!collector.includes('Math.ceil(dailyBudget * (utcHour + 1) / 24)')) {
+  throw new Error('AI budget must be paced cumulatively across the UTC day');
+}
+if (!collector.includes("env.AI_DISABLE_FALLBACK === '1' ? 1 : 2")) {
+  throw new Error('AI pacing must reserve enough headroom for configured fallback behavior');
+}
+if (!collector.includes("reason: 'daily-ai-budget-paced'")) {
+  throw new Error('budget pacing must report a truthful skip reason instead of invoking fake AI output');
+}
+if (!collector.includes('const topN = Math.min(configuredTopN, pacing.topicBudget)')) {
+  throw new Error('per-run AI selection must be capped by remaining paced budget');
+}
+
+const dailyBudget = 96;
+const paced = Array.from({ length: 24 }, (_, utcHour) => Math.ceil(dailyBudget * (utcHour + 1) / 24));
+if (paced[0] !== 4 || paced[5] !== 24 || paced[11] !== 48 || paced[23] !== 96) {
+  throw new Error(`unexpected daily pacing curve: ${paced.join(',')}`);
+}
+if (!paced.every((value, index) => index === 0 || value >= paced[index - 1])) {
+  throw new Error('daily pacing curve must be monotonic');
+}
+const primaryOnlyTopicHeadroom = Math.floor((paced[0] - 0) / 1);
+const fallbackSafeTopicHeadroom = Math.floor((paced[0] - 0) / 2);
+if (primaryOnlyTopicHeadroom !== 4 || fallbackSafeTopicHeadroom !== 2) {
+  throw new Error('pacing headroom must conservatively account for possible fallback calls');
+}
+
 const config = JSON.parse(wrangler.replace(/^\s*\/\/.*$/gm, ''));
 const topN = Number(config?.vars?.AI_TOP_N || 0);
 if (topN !== 10) throw new Error(`expected bounded AI_TOP_N=10, got ${topN}`);
@@ -43,4 +76,4 @@ if (config?.vars?.AI_MODEL !== '@cf/meta/llama-3.3-70b-instruct-fp8-fast') {
   throw new Error(`unexpected production primary model: ${config?.vars?.AI_MODEL}`);
 }
 
-console.log('Scheduled AI backfill, collection-safe degradation, and primary-only production AI policy validated');
+console.log('Scheduled AI backfill, collection-safe degradation, paced daily AI budget, and primary-only production AI policy validated');
