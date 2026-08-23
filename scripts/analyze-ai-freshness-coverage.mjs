@@ -1,4 +1,5 @@
 const DEFAULT_DASHBOARD_URL = 'https://linyuxuanlin.github.io/internet-trend-radar/data/dashboard.json';
+const DEFAULT_RELEASE_URL = 'https://linyuxuanlin.github.io/internet-trend-radar/data/release.json';
 
 function isVerified(topic) {
   const summary = String(topic?.ai_summary || '').trim();
@@ -20,6 +21,18 @@ function dashboardAgeHours(data, nowMs) {
   const generatedMs = Date.parse(data?.generatedAt || '');
   if (!Number.isFinite(generatedMs)) return null;
   return Math.max(0, Math.round(((nowMs - generatedMs) / 3600000) * 100) / 100);
+}
+
+export function validateReleaseReceipt(data, receipt) {
+  const dashboardSha = String(data?.buildSha || '').trim().toLowerCase();
+  const releaseSha = String(receipt?.buildSha || '').trim().toLowerCase();
+  if (!/^[0-9a-f]{40}$/.test(dashboardSha)) throw new Error(`dashboard missing valid buildSha: ${data?.buildSha || '<empty>'}`);
+  if (releaseSha !== dashboardSha) throw new Error(`release/dashboard buildSha mismatch: release=${releaseSha || '<empty>'} dashboard=${dashboardSha}`);
+  if (!data?.generatedAt || receipt?.generatedAt !== data.generatedAt) throw new Error('release/dashboard generatedAt mismatch');
+  if (receipt?.preview !== false || receipt?.ready !== true) throw new Error('release receipt is not real-data ready');
+  const topicCount = Array.isArray(data?.topics) ? data.topics.length : 0;
+  if (Number(receipt?.topics) !== topicCount) throw new Error(`release/dashboard topic count mismatch: release=${receipt?.topics} dashboard=${topicCount}`);
+  return true;
 }
 
 export function analyzeFreshnessCoverage(data, now = new Date()) {
@@ -71,7 +84,7 @@ function selfTest() {
     ai_why_now: verified ? '多个来源在当前时间窗口同步出现变化，因此需要在配额内优先完成分析。' : null,
     opportunities: verified ? [{ idea: '验证一个具体需求', rationale: '使用真实来源和用户反馈验证需求强度' }] : []
   });
-  const result = analyzeFreshnessCoverage({
+  const dashboard = {
     ready: true,
     preview: false,
     generatedAt: '2026-08-22T23:00:00Z',
@@ -83,7 +96,22 @@ function selfTest() {
       valid('old-pending', '2026-08-20T00:00:00Z', false),
       { ...valid('below-threshold', '2026-08-22T23:00:00Z', true), current_score: 30 }
     ]
-  }, now);
+  };
+  validateReleaseReceipt(dashboard, {
+    buildSha: 'a'.repeat(40),
+    generatedAt: dashboard.generatedAt,
+    preview: false,
+    ready: true,
+    topics: dashboard.topics.length
+  });
+  let rejectedMismatch = false;
+  try {
+    validateReleaseReceipt(dashboard, { buildSha: 'b'.repeat(40), generatedAt: dashboard.generatedAt, preview: false, ready: true, topics: dashboard.topics.length });
+  } catch {
+    rejectedMismatch = true;
+  }
+  if (!rejectedMismatch) throw new Error('release mismatch was not rejected');
+  const result = analyzeFreshnessCoverage(dashboard, now);
   const byBucket = Object.fromEntries(result.buckets.map(item => [item.bucket, item]));
   if (result.eligible_topics !== 4 || result.verified_topics !== 2) throw new Error(`unexpected totals: ${JSON.stringify(result)}`);
   if (result.dashboard_age_hours !== 1 || result.build_sha !== 'a'.repeat(40)) throw new Error('dashboard provenance mismatch');
@@ -95,25 +123,34 @@ function selfTest() {
   console.log(JSON.stringify(result, null, 2));
 }
 
-async function main() {
-  if (process.argv.includes('--self-test')) return selfTest();
-  const dashboardUrl = process.env.DASHBOARD_URL || DEFAULT_DASHBOARD_URL;
-  const timeoutMs = Math.max(1000, Number(process.env.FETCH_TIMEOUT_MS || 15000));
-  const maxDashboardAgeHours = Number(process.env.MAX_DASHBOARD_AGE_HOURS || 0);
-  const url = new URL(dashboardUrl);
-  url.searchParams.set('_radar_freshness', `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+async function fetchJson(urlString, timeoutMs, cacheBustKey) {
+  const url = new URL(urlString);
+  url.searchParams.set(cacheBustKey, `${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const response = await fetch(url, {
     cache: 'no-store',
     headers: { accept: 'application/json', 'cache-control': 'no-cache' },
     signal: AbortSignal.timeout(timeoutMs)
   });
-  if (!response.ok) throw new Error(`dashboard HTTP ${response.status}`);
-  const data = await response.json();
+  if (!response.ok) throw new Error(`${url.pathname} HTTP ${response.status}`);
+  return response.json();
+}
+
+async function main() {
+  if (process.argv.includes('--self-test')) return selfTest();
+  const dashboardUrl = process.env.DASHBOARD_URL || DEFAULT_DASHBOARD_URL;
+  const releaseUrl = process.env.RELEASE_URL || DEFAULT_RELEASE_URL;
+  const timeoutMs = Math.max(1000, Number(process.env.FETCH_TIMEOUT_MS || 15000));
+  const maxDashboardAgeHours = Number(process.env.MAX_DASHBOARD_AGE_HOURS || 0);
+  const [data, receipt] = await Promise.all([
+    fetchJson(dashboardUrl, timeoutMs, '_radar_freshness'),
+    fetchJson(releaseUrl, timeoutMs, '_radar_release')
+  ]);
+  validateReleaseReceipt(data, receipt);
   const result = analyzeFreshnessCoverage(data, new Date());
   if (maxDashboardAgeHours > 0 && (result.dashboard_age_hours == null || result.dashboard_age_hours > maxDashboardAgeHours)) {
     throw new Error(`dashboard snapshot is stale: age=${result.dashboard_age_hours ?? 'unknown'}h max=${maxDashboardAgeHours}h build=${result.build_sha || 'unknown'}`);
   }
-  console.log(JSON.stringify(result, null, 2));
+  console.log(JSON.stringify({ ...result, release_receipt_verified: true }, null, 2));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
