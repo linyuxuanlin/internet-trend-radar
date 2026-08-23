@@ -21,10 +21,11 @@
   },
   "vars": {
     "DAILYHOT_BASE": "https://api-hot.imsyy.top",
-    "AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    "AI_MODEL": "@cf/meta/llama-3.1-8b-instruct-fast",
     "AI_FALLBACK_MODEL": "@cf/meta/llama-3.1-8b-instruct-fast",
     "AI_DISABLE_FALLBACK": "1",
     "AI_TOP_N": "10",
+    "AI_DAILY_MODEL_CALL_BUDGET": "24",
     "AI_RETRY_MINUTES": "30",
     "AI_REFRESH_HOURS": "6",
     "SITE_NAME": "Trend Radar",
