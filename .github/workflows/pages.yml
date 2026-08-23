@@ -1,12 +1,9 @@
 name: Deploy GitHub Pages
 
 on:
-  # workflow_run remains the preferred path because it deploys a commit already proven by CI.
-  # push is a recovery trigger: Pages repeats the full real-data/provenance gates below before
-  # deploying, so a missed/delayed workflow_run cannot leave the public site stale for hours.
-  push:
-    branches:
-      - main
+  # workflow_run is the preferred path because it deploys a commit already proven by CI.
+  # The hourly schedule is the recovery/refresh path, but it must first prove that current
+  # main already has a successful CI run before rebuilding and publishing fresh real data.
   workflow_run:
     workflows:
       - CI
@@ -20,6 +17,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   pages: write
   id-token: write
 
@@ -37,6 +35,28 @@ jobs:
     env:
       TARGET_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
     steps:
+      - name: Require successful CI for scheduled/manual target
+        if: ${{ github.event_name != 'workflow_run' }}
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const targetSha = process.env.TARGET_SHA;
+            const { owner, repo } = context.repo;
+            const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+              owner,
+              repo,
+              workflow_id: 'ci.yml',
+              head_sha: targetSha,
+              branch: 'main',
+              status: 'completed',
+              per_page: 100,
+            });
+            const successful = runs.find((run) => run.conclusion === 'success');
+            if (!successful) {
+              core.setFailed(`Refusing Pages deploy: no successful CI run found for ${targetSha}`);
+              return;
+            }
+            core.info(`CI gate passed for ${targetSha} via run ${successful.id}`);
       - name: Checkout verified revision
         uses: actions/checkout@v7
         with:
