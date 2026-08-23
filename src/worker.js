@@ -97,10 +97,9 @@ export default {
       }
 
       // collectAll already performs exactly one AI enrichment pass through
-      // enrichAIWithoutBlockingCollection(), which enforces the UTC-paced daily
-      // model-call budget. Do not delegate to baseWorker.scheduled here: that
-      // path performs a second direct enrichTopTopics() call after collectAll
-      // and can bypass pacing by spending another AI_TOP_N burst.
+      // its collection-safe pacing wrapper. Do not delegate to the base
+      // scheduler here: that path performs a second direct AI enrichment after
+      // collectAll and can spend another AI_TOP_N burst outside the pacing cap.
       const collection = await collectAll(env);
       console.log('scheduled collection with paced AI enrichment', collection.ai);
       return { collection, ai: collection.ai };
