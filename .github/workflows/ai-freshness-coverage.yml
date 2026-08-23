@@ -20,6 +20,8 @@ jobs:
           node scripts/analyze-ai-freshness-coverage.mjs --self-test
           node --check scripts/validate-live-release-coherence.mjs
           node scripts/validate-live-release-coherence.mjs --self-test
+          node --check scripts/validate-release-receipt.mjs
+          node scripts/validate-release-receipt.mjs --self-test
       - name: Probe live real dashboard coverage
         # A PR cannot guarantee that its code is deployed yet, so live drift is advisory
         # there. On main, manual runs, and the hourly watchdog, stale public data must fail.
@@ -43,3 +45,14 @@ jobs:
           MAX_RELEASE_AGE_MS: 10800000
         run: |
           node scripts/validate-live-release-coherence.mjs
+      - name: Probe live release receipt
+        # The receipt is a compact, cache-busted proof of what the public deployment actually contains.
+        # It stays advisory on PRs until that code is deployed, and strict everywhere else.
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        env:
+          RELEASE_URL: https://linyuxuanlin.github.io/internet-trend-radar/data/release.json
+          EXPECTED_BUILD_SHA: ${{ github.sha }}
+          FETCH_TIMEOUT_MS: 15000
+          MAX_RELEASE_AGE_MS: 10800000
+        run: |
+          node scripts/validate-release-receipt.mjs

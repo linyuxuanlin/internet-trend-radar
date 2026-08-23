@@ -89,6 +89,7 @@ jobs:
           BUILD_SHA="$TARGET_SHA" node scripts/stamp-build-provenance.mjs
           node scripts/write-opportunities.mjs
           node scripts/write-health-manifest.mjs
+          node scripts/write-release-receipt.mjs
       - name: Verify production real-data and AI gates
         env:
           REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu,ithome,solidot
@@ -122,13 +123,14 @@ jobs:
           DASHBOARD_URL: ${{ steps.deployment.outputs.page_url }}data/dashboard.json
           HEALTH_URL: ${{ steps.deployment.outputs.page_url }}data/health.json
           OPPORTUNITIES_URL: ${{ steps.deployment.outputs.page_url }}data/opportunities.json
+          RELEASE_URL: ${{ steps.deployment.outputs.page_url }}data/release.json
           EXPECTED_BUILD_SHA: ${{ env.TARGET_SHA }}
           MIN_HEALTHY_SOURCES: '14'
           MIN_DIRECT_CN_SOURCES: '10'
           REQUIRED_DIRECT_CN: v2ex,sspai,bilibili,36kr,juejin,baidu,toutiao,hupu,ithome,solidot
         run: |
           for attempt in 1 2 3 4 5 6; do
-            if node scripts/validate-real-dashboard.mjs && node scripts/validate-build-provenance.mjs && node scripts/validate-health-manifest.mjs && node scripts/validate-opportunities-live.mjs && node scripts/validate-ai-assets.mjs && node scripts/validate-ai-quality.mjs; then
+            if node scripts/validate-real-dashboard.mjs && node scripts/validate-build-provenance.mjs && node scripts/validate-health-manifest.mjs && node scripts/validate-opportunities-live.mjs && node scripts/validate-release-receipt.mjs && node scripts/validate-ai-assets.mjs && node scripts/validate-ai-quality.mjs; then
               exit 0
             fi
             [ "$attempt" -lt 6 ] && sleep 10
