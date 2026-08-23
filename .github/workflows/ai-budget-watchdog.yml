@@ -7,6 +7,7 @@ on:
       - 'scripts/validate-live-ai-budget.mjs'
       - 'scripts/validate-live-ai-debug-coherence.mjs'
       - 'scripts/validate-live-ai-model-usage.mjs'
+      - 'scripts/validate-live-ai-reset-recovery.mjs'
       - '.github/workflows/ai-budget-watchdog.yml'
       - 'wrangler.jsonc'
   push:
@@ -16,6 +17,7 @@ on:
       - 'scripts/validate-live-ai-budget.mjs'
       - 'scripts/validate-live-ai-debug-coherence.mjs'
       - 'scripts/validate-live-ai-model-usage.mjs'
+      - 'scripts/validate-live-ai-reset-recovery.mjs'
       - '.github/workflows/ai-budget-watchdog.yml'
       - 'wrangler.jsonc'
   schedule:
@@ -44,6 +46,8 @@ jobs:
         run: node scripts/validate-live-ai-debug-coherence.mjs --self-test
       - name: Validate runtime model usage contract
         run: node scripts/validate-live-ai-model-usage.mjs --self-test
+      - name: Validate quota reset recovery contract
+        run: node scripts/validate-live-ai-reset-recovery.mjs --self-test
       - name: Probe production AI budget
         id: live
         continue-on-error: ${{ github.event_name == 'pull_request' }}
@@ -84,6 +88,12 @@ jobs:
         env:
           EXPECTED_AI_MODEL: '@cf/meta/llama-3.1-8b-instruct-fast'
         run: node scripts/validate-live-ai-model-usage.mjs
+      - name: Probe production quota reset recovery
+        id: reset_recovery
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        env:
+          EXPECTED_AI_MODEL: '@cf/meta/llama-3.1-8b-instruct-fast'
+        run: node scripts/validate-live-ai-reset-recovery.mjs
       - name: Explain advisory PR probe
-        if: ${{ github.event_name == 'pull_request' && (steps.live.outcome == 'failure' || steps.coherence.outcome == 'failure' || steps.model.outcome == 'failure' || steps.runtime_model.outcome == 'failure') }}
+        if: ${{ github.event_name == 'pull_request' && (steps.live.outcome == 'failure' || steps.coherence.outcome == 'failure' || steps.model.outcome == 'failure' || steps.runtime_model.outcome == 'failure' || steps.reset_recovery.outcome == 'failure') }}
         run: echo 'Production probes are advisory on PRs because the candidate Worker code is not deployed to production yet.'
