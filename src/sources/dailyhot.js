@@ -45,6 +45,59 @@ async function fetchFromUpstream(base, sourceId) {
   return { body, list, upstream: base };
 }
 
+function mapDouyinRows(body, upstream) {
+  const rows = Array.isArray(body?.data?.word_list)
+    ? body.data.word_list
+    : Array.isArray(body?.word_list)
+      ? body.word_list
+      : [];
+  if (!rows.length) throw new Error('Douyin response empty');
+  return {
+    body: { title: '抖音' },
+    upstream,
+    list: rows.map((v, i) => ({
+      id: v.sentence_id || v.word_id || `douyin-${i}`,
+      title: v.word || v.sentence || v.title,
+      hot: v.hot_value || v.hot || v.score,
+      timestamp: v.event_time || v.timestamp,
+      url: v.sentence_id ? `https://www.douyin.com/hot/${v.sentence_id}` : `https://www.douyin.com/search/${encodeURIComponent(v.word || v.sentence || v.title || '')}`
+    }))
+  };
+}
+
+async function fetchDouyinDirect() {
+  const errors = [];
+  try {
+    const cookieRes = await fetch('https://www.douyin.com/passport/general/login_guiding_strategy/?aid=6383', {
+      headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36' },
+      signal: AbortSignal.timeout(12000)
+    });
+    if (!cookieRes.ok) throw new Error(`cookie HTTP ${cookieRes.status}`);
+    const setCookie = cookieRes.headers.get('set-cookie') || '';
+    const token = /passport_csrf_token=([^;]+)/.exec(setCookie)?.[1];
+    if (!token) throw new Error('csrf cookie missing');
+    const upstream = 'https://www.douyin.com/aweme/v1/web/hot/search/list/';
+    const { body } = await fetchJson(`${upstream}?device_platform=webapp&aid=6383&channel=channel_pc_web&detail_list=1&source=6&main_billboard_count=50`, {
+      headers: { cookie: `passport_csrf_token=${token}`, referer: 'https://www.douyin.com/' }
+    });
+    return mapDouyinRows(body, upstream);
+  } catch (err) {
+    errors.push(`official: ${String(err?.message || err)}`);
+  }
+
+  // AA1 mirrors the public Douyin hot-search payload and requires no API key.
+  // It is a real-data fallback only; provenance is preserved on every item.
+  try {
+    const upstream = 'https://v.api.aa1.cn/api/douyin-hot/index.php?aa1=hot';
+    const { body } = await fetchJson(upstream, { cf: { cacheTtl: 60, cacheEverything: false } });
+    return mapDouyinRows(body, upstream);
+  } catch (err) {
+    errors.push(`aa1: ${String(err?.message || err)}`);
+  }
+
+  throw new Error(errors.join('; '));
+}
+
 async function fetchDirect(sourceId) {
   if (sourceId === 'weibo') {
     const { body } = await fetchJson('https://weibo.com/ajax/side/hotSearch', {
@@ -87,32 +140,7 @@ async function fetchDirect(sourceId) {
     };
   }
 
-  if (sourceId === 'douyin') {
-    const cookieRes = await fetch('https://www.douyin.com/passport/general/login_guiding_strategy/?aid=6383', {
-      headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36' },
-      signal: AbortSignal.timeout(12000)
-    });
-    if (!cookieRes.ok) throw new Error(`Douyin cookie HTTP ${cookieRes.status}`);
-    const setCookie = cookieRes.headers.get('set-cookie') || '';
-    const token = /passport_csrf_token=([^;]+)/.exec(setCookie)?.[1];
-    if (!token) throw new Error('Douyin csrf cookie missing');
-    const { body } = await fetchJson('https://www.douyin.com/aweme/v1/web/hot/search/list/?device_platform=webapp&aid=6383&channel=channel_pc_web&detail_list=1', {
-      headers: { cookie: `passport_csrf_token=${token}`, referer: 'https://www.douyin.com/' }
-    });
-    const rows = Array.isArray(body?.data?.word_list) ? body.data.word_list : [];
-    if (!rows.length) throw new Error('Douyin direct response empty');
-    return {
-      body: { title: '抖音' },
-      upstream: 'https://www.douyin.com/aweme/v1/web/hot/search/list/',
-      list: rows.map(v => ({
-        id: v.sentence_id,
-        title: v.word,
-        hot: v.hot_value,
-        timestamp: v.event_time,
-        url: `https://www.douyin.com/hot/${v.sentence_id}`
-      }))
-    };
-  }
+  if (sourceId === 'douyin') return fetchDouyinDirect();
 
   throw new Error('no direct fallback');
 }
