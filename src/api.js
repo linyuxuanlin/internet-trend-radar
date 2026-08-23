@@ -60,7 +60,13 @@ function nextBudgetReleaseIso(now = new Date()) {
   return next.toISOString();
 }
 
-async function aiBudgetStatus(env, now = new Date()) {
+function nextUtcDayIso(now = new Date()) {
+  const next = new Date(now);
+  next.setUTCHours(24, 0, 0, 0);
+  return next.toISOString();
+}
+
+export async function aiBudgetStatus(env, now = new Date()) {
   if (!env.DB) return { ok: false, error: 'missing DB binding' };
   const dailyBudget = Math.max(24, Math.min(240, Number(env.AI_DAILY_MODEL_CALL_BUDGET || 96)));
   const maxCallsPerTopic = env.AI_DISABLE_FALLBACK === '1' ? 1 : 2;
@@ -88,6 +94,59 @@ async function aiBudgetStatus(env, now = new Date()) {
     paced: remainingHeadroom === 0 && remainingDaily > 0,
     exhausted: remainingDaily === 0,
     next_release_at: remainingHeadroom === 0 && remainingDaily > 0 ? nextBudgetReleaseIso(now) : null
+  };
+}
+
+async function providerQuotaStatus(env, now = new Date()) {
+  if (!env.DB) return { exhausted: false, detected_at: null, retry_after: null, failure_reason: null };
+  const row = await env.DB.prepare(`
+    SELECT attempted_at, failure_reason FROM ai_attempts
+    WHERE success=0
+      AND (failure_reason LIKE 'inference-error:quota-or-capacity%' OR failure_reason LIKE 'fallback-inference-error:quota-or-capacity%')
+      AND substr(attempted_at,1,10)=substr(datetime('now'),1,10)
+    ORDER BY attempted_at DESC LIMIT 1
+  `).first();
+  return {
+    exhausted: Boolean(row?.attempted_at),
+    detected_at: row?.attempted_at || null,
+    retry_after: row?.attempted_at ? nextUtcDayIso(now) : null,
+    failure_reason: row?.failure_reason || null
+  };
+}
+
+export async function aiAvailabilityStatus(env, now = new Date()) {
+  const generatedAt = now.toISOString();
+  if (!env.DB) {
+    return {
+      ok: false,
+      generatedAt,
+      available: false,
+      effective_blocker: 'missing-db-binding',
+      binding: Boolean(env.AI),
+      provider_quota: { exhausted: false, detected_at: null, retry_after: null, failure_reason: null },
+      pacing: { ok: false, error: 'missing DB binding' }
+    };
+  }
+
+  const [pacing, providerQuota] = await Promise.all([
+    aiBudgetStatus(env, now),
+    providerQuotaStatus(env, now)
+  ]);
+
+  let effectiveBlocker = null;
+  if (!env.AI) effectiveBlocker = 'missing-ai-binding';
+  else if (providerQuota.exhausted) effectiveBlocker = 'provider-daily-quota-exhausted';
+  else if (pacing.exhausted) effectiveBlocker = 'daily-ai-budget-exhausted';
+  else if (pacing.paced || pacing.topic_headroom < 1) effectiveBlocker = 'daily-ai-budget-paced';
+
+  return {
+    ok: true,
+    generatedAt,
+    available: effectiveBlocker === null,
+    effective_blocker: effectiveBlocker,
+    binding: Boolean(env.AI),
+    provider_quota: providerQuota,
+    pacing
   };
 }
 
@@ -205,6 +264,13 @@ export async function routeApi(env, request) {
       return json(await aiBudgetStatus(env));
     } catch (error) {
       return json({ ok: false, error: String(error?.message || error), generatedAt: new Date().toISOString() }, { status: 503 });
+    }
+  }
+  if (url.pathname === '/api/ai-availability' && request.method === 'GET') {
+    try {
+      return json(await aiAvailabilityStatus(env));
+    } catch (error) {
+      return json({ ok: false, available: false, effective_blocker: 'availability-probe-failed', error: String(error?.message || error), generatedAt: new Date().toISOString() }, { status: 503 });
     }
   }
   if (url.pathname === '/api/dashboard' && request.method === 'GET') return dashboard(env, url);
