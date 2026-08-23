@@ -22,7 +22,7 @@ function upstreamBases(env) {
   return [...new Set([...configured, ...defaults].map(x => x.replace(/\/$/, '')))];
 }
 
-async function fetchJson(url, options = {}) {
+async function fetchResponse(url, options = {}) {
   const res = await fetch(url, {
     ...options,
     headers: {
@@ -33,7 +33,49 @@ async function fetchJson(url, options = {}) {
     signal: AbortSignal.timeout(12000)
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res;
+}
+
+async function fetchJson(url, options = {}) {
+  const res = await fetchResponse(url, options);
   return { res, body: await res.json() };
+}
+
+function parseFirstJsonObject(text) {
+  const start = text.indexOf('{');
+  if (start < 0) throw new Error('JSON object missing');
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '{') depth += 1;
+    if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return JSON.parse(text.slice(start, i + 1));
+    }
+  }
+  throw new Error('JSON object incomplete');
+}
+
+async function fetchLooseJson(url, options = {}) {
+  const res = await fetchResponse(url, options);
+  const text = await res.text();
+  try {
+    return { res, body: JSON.parse(text) };
+  } catch {
+    return { res, body: parseFirstJsonObject(text) };
+  }
 }
 
 async function fetchFromUpstream(base, sourceId) {
@@ -86,10 +128,11 @@ async function fetchDouyinDirect() {
   }
 
   // AA1 mirrors the public Douyin hot-search payload and requires no API key.
-  // It is a real-data fallback only; provenance is preserved on every item.
+  // It currently appends non-JSON bytes after a valid JSON object, so parse only
+  // the first complete JSON object while preserving the real upstream payload.
   try {
     const upstream = 'https://v.api.aa1.cn/api/douyin-hot/index.php?aa1=hot';
-    const { body } = await fetchJson(upstream, { cf: { cacheTtl: 60, cacheEverything: false } });
+    const { body } = await fetchLooseJson(upstream, { cf: { cacheTtl: 60, cacheEverything: false } });
     return mapDouyinRows(body, upstream);
   } catch (err) {
     errors.push(`aa1: ${String(err?.message || err)}`);
