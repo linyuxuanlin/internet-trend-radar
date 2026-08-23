@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const DEFAULT_BASE_URL = 'https://internet-trend-radar.linyuxuanlin.workers.dev';
+const EXPECTED_DAILY_BUDGET = 24;
 
 export function validateBudgetPayload(payload, now = new Date()) {
   if (!payload || typeof payload !== 'object') throw new Error('AI budget response must be an object');
@@ -29,7 +30,9 @@ export function validateBudgetPayload(payload, now = new Date()) {
   const topicHeadroom = Number(payload.topic_headroom);
   const maxCalls = Number(payload.max_calls_per_topic);
 
-  if (daily < 24 || daily > 240) throw new Error(`daily_budget outside guarded range: ${daily}`);
+  if (daily !== EXPECTED_DAILY_BUDGET) {
+    throw new Error(`production daily_budget drifted: got ${daily}, expected ${EXPECTED_DAILY_BUDGET}`);
+  }
   if (![1, 2].includes(maxCalls)) throw new Error(`unexpected max_calls_per_topic: ${maxCalls}`);
   if (cumulative > daily) throw new Error(`cumulative_budget ${cumulative} exceeds daily_budget ${daily}`);
   if (remainingHeadroom !== Math.max(0, cumulative - attempts)) {
@@ -167,11 +170,11 @@ function runSelfTest() {
     ok: true,
     generatedAt: now.toISOString(),
     timezone: 'UTC',
-    daily_budget: 96,
-    attempts_today: 30,
-    cumulative_budget: 32,
+    daily_budget: 24,
+    attempts_today: 6,
+    cumulative_budget: 8,
     remaining_headroom: 2,
-    remaining_daily: 66,
+    remaining_daily: 18,
     topic_headroom: 2,
     max_calls_per_topic: 1,
     paced: false,
@@ -192,9 +195,9 @@ function runSelfTest() {
 
   const pacedPayload = {
     ...base,
-    attempts_today: 32,
+    attempts_today: 8,
     remaining_headroom: 0,
-    remaining_daily: 64,
+    remaining_daily: 16,
     topic_headroom: 0,
     paced: true,
     next_release_at: '2026-08-23T08:00:00.000Z'
@@ -236,6 +239,7 @@ function runSelfTest() {
 
   let rejected = 0;
   for (const test of [
+    () => validateBudgetPayload({ ...base, daily_budget: 96, remaining_daily: 90 }, now),
     () => validateBudgetPayload({ ...base, remaining_daily: 99 }, now),
     () => validateAvailabilityPayload({ ok: true, generatedAt: now.toISOString(), available: true, effective_blocker: null, binding: true, provider_quota: { exhausted: false }, pacing: { ...base, remaining_headroom: 1 } }, budget, now),
     () => validateAvailabilityPayload({ ok: true, generatedAt: now.toISOString(), available: true, effective_blocker: null, binding: true, provider_quota: { exhausted: true, detected_at: now.toISOString(), retry_after: '2026-08-24T00:00:00.000Z', failure_reason: 'inference-error:quota-or-capacity' }, pacing: base }, budget, now),
@@ -243,7 +247,7 @@ function runSelfTest() {
   ]) {
     try { test(); } catch { rejected += 1; }
   }
-  if (rejected !== 4) throw new Error(`self-test expected 4 rejected payloads, got ${rejected}`);
+  if (rejected !== 5) throw new Error(`self-test expected 5 rejected payloads, got ${rejected}`);
   console.log('AI budget and availability coherence watchdog self-test passed');
 }
 
@@ -255,7 +259,7 @@ async function fetchJson(url, label) {
       accept: 'application/json',
       'cache-control': 'no-cache, no-store',
       pragma: 'no-cache',
-      'user-agent': 'internet-trend-radar-ai-budget-watchdog/2.0'
+      'user-agent': 'internet-trend-radar-ai-budget-watchdog/2.1'
     },
     signal: AbortSignal.timeout(15_000)
   });
