@@ -1,6 +1,7 @@
 const DASHBOARD_URL = String(process.env.DASHBOARD_URL || '').trim();
 const HEALTH_URL = String(process.env.HEALTH_URL || '').trim();
 const OPPORTUNITIES_URL = String(process.env.OPPORTUNITIES_URL || '').trim();
+const EXPECTED_BUILD_SHA = String(process.env.EXPECTED_BUILD_SHA || '').trim().toLowerCase();
 const FETCH_TIMEOUT_MS = Number(process.env.FETCH_TIMEOUT_MS || 15_000);
 const MAX_RELEASE_AGE_MS = Number(process.env.MAX_RELEASE_AGE_MS || 3 * 60 * 60 * 1000);
 const MAX_FUTURE_SKEW_MS = Number(process.env.MAX_FUTURE_SKEW_MS || 5 * 60 * 1000);
@@ -9,7 +10,7 @@ function validSha(value) {
   return /^[0-9a-f]{40}$/i.test(String(value || '').trim());
 }
 
-export function validateReleaseCoherence({ dashboard, health, opportunities, now = Date.now() }) {
+export function validateReleaseCoherence({ dashboard, health, opportunities, expectedBuildSha = '', now = Date.now() }) {
   const rows = [
     ['dashboard', dashboard],
     ['health', health],
@@ -27,6 +28,16 @@ export function validateReleaseCoherence({ dashboard, health, opportunities, now
   }
 
   const buildSha = String(dashboard.buildSha).toLowerCase();
+  const normalizedExpected = String(expectedBuildSha || '').trim().toLowerCase();
+  if (normalizedExpected) {
+    if (!validSha(normalizedExpected)) {
+      throw new Error(`expected build SHA is invalid: ${normalizedExpected}`);
+    }
+    if (buildSha !== normalizedExpected) {
+      throw new Error(`public release is not current main: expected=${normalizedExpected} actual=${buildSha}`);
+    }
+  }
+
   if (String(health.buildSha).toLowerCase() !== buildSha) {
     throw new Error(`health buildSha mismatch: dashboard=${dashboard.buildSha} health=${health.buildSha}`);
   }
@@ -59,6 +70,7 @@ export function validateReleaseCoherence({ dashboard, health, opportunities, now
 
   return {
     buildSha,
+    expectedBuildSha: normalizedExpected || null,
     generatedAt: dashboard.generatedAt,
     ageSeconds: Math.max(0, Math.round((now - Date.parse(dashboard.generatedAt)) / 1000)),
     opportunityStatus: opportunities.status,
@@ -87,8 +99,10 @@ function runSelfTest() {
   const dashboard = { buildSha, generatedAt, preview: false, ready: true };
   const health = { buildSha, generatedAt, preview: false, ready: true };
   const opportunities = { buildSha, generatedAt, status: 'degraded', opportunities: [] };
-  const ok = validateReleaseCoherence({ dashboard, health, opportunities, now });
-  if (ok.buildSha !== buildSha || ok.ageSeconds !== 1800) throw new Error('self-test valid release failed');
+  const ok = validateReleaseCoherence({ dashboard, health, opportunities, expectedBuildSha: buildSha, now });
+  if (ok.buildSha !== buildSha || ok.expectedBuildSha !== buildSha || ok.ageSeconds !== 1800) {
+    throw new Error('self-test valid release failed');
+  }
 
   let mismatchCaught = false;
   try {
@@ -97,6 +111,14 @@ function runSelfTest() {
     mismatchCaught = String(error?.message || error).includes('buildSha mismatch');
   }
   if (!mismatchCaught) throw new Error('self-test did not reject split release');
+
+  let staleCommitCaught = false;
+  try {
+    validateReleaseCoherence({ dashboard, health, opportunities, expectedBuildSha: 'c'.repeat(40), now });
+  } catch (error) {
+    staleCommitCaught = String(error?.message || error).includes('not current main');
+  }
+  if (!staleCommitCaught) throw new Error('self-test did not reject release from an older commit');
   console.log('Live release coherence self-test passed');
 }
 
@@ -108,5 +130,8 @@ if (process.argv.includes('--self-test')) {
     fetchJson(HEALTH_URL, 'health'),
     fetchJson(OPPORTUNITIES_URL, 'opportunities')
   ]);
-  console.log(JSON.stringify({ ok: true, ...validateReleaseCoherence({ dashboard, health, opportunities }) }));
+  console.log(JSON.stringify({
+    ok: true,
+    ...validateReleaseCoherence({ dashboard, health, opportunities, expectedBuildSha: EXPECTED_BUILD_SHA })
+  }));
 }

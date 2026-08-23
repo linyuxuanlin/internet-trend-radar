@@ -1,6 +1,12 @@
 name: Deploy GitHub Pages
 
 on:
+  # workflow_run remains the preferred path because it deploys a commit already proven by CI.
+  # push is a recovery trigger: Pages repeats the full real-data/provenance gates below before
+  # deploying, so a missed/delayed workflow_run cannot leave the public site stale for hours.
+  push:
+    branches:
+      - main
   workflow_run:
     workflows:
       - CI
