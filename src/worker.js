@@ -25,9 +25,16 @@ export function mergeAIAvailabilityIntoDebug(debug, availability) {
   return payload;
 }
 
+export function isForbiddenPreviewPath(pathname) {
+  return pathname.startsWith('/api/topic/preview-');
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    if (isForbiddenPreviewPath(url.pathname)) {
+      return Response.json({ error: 'preview topics are disabled in production', ready: false, preview: false }, { status: 404 });
+    }
     if (url.pathname !== '/api/debug') return baseWorker.fetch(request, env, ctx);
 
     const response = await baseWorker.fetch(request, env, ctx);
