@@ -1,5 +1,8 @@
 import baseWorker from './index.js';
 import { aiAvailabilityStatus } from './api.js';
+import { collectAll } from './collector.js';
+import { sendDailyDigest } from './email.js';
+import { ensureSchema } from './schema.js';
 
 export function mergeAIAvailabilityIntoDebug(debug, availability) {
   const payload = debug && typeof debug === 'object' ? debug : {};
@@ -86,6 +89,21 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
-    return baseWorker.scheduled(controller, env, ctx);
+    ctx.waitUntil((async () => {
+      await ensureSchema(env);
+      if (controller.cron === '5 0 * * *') {
+        await sendDailyDigest(env);
+        return;
+      }
+
+      // collectAll already performs exactly one AI enrichment pass through
+      // enrichAIWithoutBlockingCollection(), which enforces the UTC-paced daily
+      // model-call budget. Do not delegate to baseWorker.scheduled here: that
+      // path performs a second direct enrichTopTopics() call after collectAll
+      // and can bypass pacing by spending another AI_TOP_N burst.
+      const collection = await collectAll(env);
+      console.log('scheduled collection with paced AI enrichment', collection.ai);
+      return { collection, ai: collection.ai };
+    })().catch(err => console.error('scheduled job failed', err)));
   }
 };
