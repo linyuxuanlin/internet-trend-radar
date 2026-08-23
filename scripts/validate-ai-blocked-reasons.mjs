@@ -1,4 +1,5 @@
 import worker from '../src/index.js';
+import { aiAvailabilityStatus } from '../src/api.js';
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -10,7 +11,7 @@ async function debug(env) {
   return response.json();
 }
 
-function readyDB({ eligible = 4, attempted = 0, verified = 0, stale = 0, quota = false } = {}) {
+function readyDB({ eligible = 4, attempted = 0, verified = 0, stale = 0, quota = false, attemptsToday = 0 } = {}) {
   return {
     prepare(sql) {
       if (sql.includes('sqlite_master')) return {
@@ -29,6 +30,7 @@ function readyDB({ eligible = 4, attempted = 0, verified = 0, stale = 0, quota =
       if (sql.includes('COALESCE(ai_summary')) return { async first() { return { count: verified }; } };
       if (sql.includes("julianday(ai_updated_at) < julianday('now','-6 hours')")) return { async first() { return { count: stale }; } };
       if (sql.includes('SELECT MAX(ai_updated_at)')) return { async first() { return { value: attempted ? '2026-08-21T18:30:00.000Z' : null }; } };
+      if (sql.includes('SELECT count(*) AS attempts FROM ai_attempts')) return { async first() { return { attempts: attemptsToday }; } };
       if (sql.includes("failure_reason LIKE 'inference-error:quota-or-capacity%'")) return {
         async first() {
           return quota ? {
@@ -74,4 +76,38 @@ const healthy = await debug({ DB: readyDB({ eligible: 6, attempted: 6, verified:
 assert(healthy.ai.blocked_reason === null, `healthy reason=${healthy.ai.blocked_reason}`);
 assert(healthy.ai.pending_topics === 0, `healthy pending=${healthy.ai.pending_topics}`);
 
-console.log('AI blocked-reason diagnostics validated');
+const fixedNow = new Date('2026-08-23T08:30:00.000Z');
+const providerBlocked = await aiAvailabilityStatus({
+  DB: readyDB({ quota: true, attemptsToday: 10 }),
+  AI: { run() {} },
+  AI_DAILY_MODEL_CALL_BUDGET: '96',
+  AI_DISABLE_FALLBACK: '1'
+}, fixedNow);
+assert(providerBlocked.available === false, 'provider quota must override pacing headroom');
+assert(providerBlocked.effective_blocker === 'provider-daily-quota-exhausted', `provider blocker=${providerBlocked.effective_blocker}`);
+assert(providerBlocked.pacing.remaining_headroom === 26, `provider pacing headroom=${providerBlocked.pacing.remaining_headroom}`);
+assert(providerBlocked.provider_quota.exhausted === true, 'provider quota exhaustion must be explicit');
+assert(providerBlocked.provider_quota.retry_after === '2026-08-24T00:00:00.000Z', `provider retry=${providerBlocked.provider_quota.retry_after}`);
+
+const paced = await aiAvailabilityStatus({
+  DB: readyDB({ attemptsToday: 36 }),
+  AI: { run() {} },
+  AI_DAILY_MODEL_CALL_BUDGET: '96',
+  AI_DISABLE_FALLBACK: '1'
+}, fixedNow);
+assert(paced.available === false, 'pacing cap must block inference until next release');
+assert(paced.effective_blocker === 'daily-ai-budget-paced', `paced blocker=${paced.effective_blocker}`);
+assert(paced.pacing.paced === true, 'pacing status must be explicit');
+assert(paced.pacing.next_release_at === '2026-08-23T09:00:00.000Z', `next release=${paced.pacing.next_release_at}`);
+
+const available = await aiAvailabilityStatus({
+  DB: readyDB({ attemptsToday: 10 }),
+  AI: { run() {} },
+  AI_DAILY_MODEL_CALL_BUDGET: '96',
+  AI_DISABLE_FALLBACK: '1'
+}, fixedNow);
+assert(available.available === true, `availability blocker=${available.effective_blocker}`);
+assert(available.effective_blocker === null, `availability blocker=${available.effective_blocker}`);
+assert(available.pacing.topic_headroom === 26, `topic headroom=${available.pacing.topic_headroom}`);
+
+console.log('AI blocked-reason and effective-availability diagnostics validated');
