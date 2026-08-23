@@ -6,6 +6,7 @@ on:
       - 'src/**'
       - 'scripts/validate-live-ai-budget.mjs'
       - 'scripts/validate-live-ai-debug-coherence.mjs'
+      - 'scripts/validate-live-ai-model-usage.mjs'
       - '.github/workflows/ai-budget-watchdog.yml'
       - 'wrangler.jsonc'
   push:
@@ -14,6 +15,7 @@ on:
       - 'src/**'
       - 'scripts/validate-live-ai-budget.mjs'
       - 'scripts/validate-live-ai-debug-coherence.mjs'
+      - 'scripts/validate-live-ai-model-usage.mjs'
       - '.github/workflows/ai-budget-watchdog.yml'
       - 'wrangler.jsonc'
   schedule:
@@ -40,6 +42,8 @@ jobs:
         run: node scripts/validate-live-ai-budget.mjs --self-test
       - name: Validate strict debug coherence contract
         run: node scripts/validate-live-ai-debug-coherence.mjs --self-test
+      - name: Validate runtime model usage contract
+        run: node scripts/validate-live-ai-model-usage.mjs --self-test
       - name: Probe production AI budget
         id: live
         continue-on-error: ${{ github.event_name == 'pull_request' }}
@@ -74,6 +78,12 @@ jobs:
           if (actual !== expected) throw new Error(`production AI model drifted: got ${actual || '<missing>'}, expected ${expected}`);
           console.log(JSON.stringify({ ok: true, model: actual, generatedAt: payload.generatedAt || null }));
           NODE
+      - name: Verify production runtime model usage
+        id: runtime_model
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        env:
+          EXPECTED_AI_MODEL: '@cf/meta/llama-3.1-8b-instruct-fast'
+        run: node scripts/validate-live-ai-model-usage.mjs
       - name: Explain advisory PR probe
-        if: ${{ github.event_name == 'pull_request' && (steps.live.outcome == 'failure' || steps.coherence.outcome == 'failure' || steps.model.outcome == 'failure') }}
+        if: ${{ github.event_name == 'pull_request' && (steps.live.outcome == 'failure' || steps.coherence.outcome == 'failure' || steps.model.outcome == 'failure' || steps.runtime_model.outcome == 'failure') }}
         run: echo 'Production probes are advisory on PRs because the candidate Worker code is not deployed to production yet.'
