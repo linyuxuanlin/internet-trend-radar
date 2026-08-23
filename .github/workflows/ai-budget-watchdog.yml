@@ -5,6 +5,7 @@ on:
     paths:
       - 'src/**'
       - 'scripts/validate-live-ai-budget.mjs'
+      - 'scripts/validate-live-ai-debug-coherence.mjs'
       - '.github/workflows/ai-budget-watchdog.yml'
       - 'wrangler.jsonc'
   push:
@@ -12,6 +13,7 @@ on:
     paths:
       - 'src/**'
       - 'scripts/validate-live-ai-budget.mjs'
+      - 'scripts/validate-live-ai-debug-coherence.mjs'
       - '.github/workflows/ai-budget-watchdog.yml'
       - 'wrangler.jsonc'
   schedule:
@@ -36,10 +38,16 @@ jobs:
           node-version: 22
       - name: Validate watchdog contract
         run: node scripts/validate-live-ai-budget.mjs --self-test
+      - name: Validate strict debug coherence contract
+        run: node scripts/validate-live-ai-debug-coherence.mjs --self-test
       - name: Probe production AI budget
         id: live
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         run: node scripts/validate-live-ai-budget.mjs
+      - name: Probe strict production AI debug coherence
+        id: coherence
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        run: node scripts/validate-live-ai-debug-coherence.mjs
       - name: Explain advisory PR probe
-        if: ${{ github.event_name == 'pull_request' && steps.live.outcome == 'failure' }}
-        run: echo 'Production probe is advisory on PRs because the candidate Worker code is not deployed to production yet.'
+        if: ${{ github.event_name == 'pull_request' && (steps.live.outcome == 'failure' || steps.coherence.outcome == 'failure') }}
+        run: echo 'Production probes are advisory on PRs because the candidate Worker code is not deployed to production yet.'
