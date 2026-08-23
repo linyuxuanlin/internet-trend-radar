@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 
 const source = await readFile(new URL('../src/index.js', import.meta.url), 'utf8');
 const collector = await readFile(new URL('../src/collector.js', import.meta.url), 'utf8');
+const api = await readFile(new URL('../src/api.js', import.meta.url), 'utf8');
 const wrangler = await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
 
 const scheduledStart = source.indexOf('async scheduled(controller, env, ctx)');
@@ -51,6 +52,22 @@ if (!collector.includes('const topN = Math.min(configuredTopN, pacing.topicBudge
   throw new Error('per-run AI selection must be capped by remaining paced budget');
 }
 
+if (!api.includes("url.pathname === '/api/ai-budget'")) {
+  throw new Error('AI pacing must expose a read-only production observability endpoint');
+}
+for (const field of ['daily_budget', 'attempts_today', 'cumulative_budget', 'remaining_headroom', 'remaining_daily', 'topic_headroom', 'max_calls_per_topic', 'next_release_at']) {
+  if (!api.includes(field)) throw new Error(`AI budget endpoint missing ${field}`);
+}
+if (!api.includes("substr(attempted_at,1,10)=substr(datetime('now'),1,10)")) {
+  throw new Error('AI budget endpoint must report real persisted attempts from the current UTC day');
+}
+if (!api.includes('Math.ceil(dailyBudget * (utcHour + 1) / 24)')) {
+  throw new Error('AI budget endpoint must use the same UTC pacing curve as collection');
+}
+if (!api.includes('remainingHeadroom === 0 && remainingDaily > 0 ? nextBudgetReleaseIso(now) : null')) {
+  throw new Error('AI budget endpoint must reveal the next release time when pacing is the active blocker');
+}
+
 const dailyBudget = 96;
 const paced = Array.from({ length: 24 }, (_, utcHour) => Math.ceil(dailyBudget * (utcHour + 1) / 24));
 if (paced[0] !== 4 || paced[5] !== 24 || paced[11] !== 48 || paced[23] !== 96) {
@@ -76,4 +93,4 @@ if (config?.vars?.AI_MODEL !== '@cf/meta/llama-3.3-70b-instruct-fp8-fast') {
   throw new Error(`unexpected production primary model: ${config?.vars?.AI_MODEL}`);
 }
 
-console.log('Scheduled AI backfill, collection-safe degradation, paced daily AI budget, and primary-only production AI policy validated');
+console.log('Scheduled AI backfill, collection-safe degradation, paced daily AI budget, production budget observability, and primary-only production AI policy validated');

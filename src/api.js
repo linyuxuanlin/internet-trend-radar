@@ -53,6 +53,44 @@ function publicTopic(topic) {
   };
 }
 
+function nextBudgetReleaseIso(now = new Date()) {
+  const next = new Date(now);
+  next.setUTCMinutes(0, 0, 0);
+  next.setUTCHours(next.getUTCHours() + 1);
+  return next.toISOString();
+}
+
+async function aiBudgetStatus(env, now = new Date()) {
+  if (!env.DB) return { ok: false, error: 'missing DB binding' };
+  const dailyBudget = Math.max(24, Math.min(240, Number(env.AI_DAILY_MODEL_CALL_BUDGET || 96)));
+  const maxCallsPerTopic = env.AI_DISABLE_FALLBACK === '1' ? 1 : 2;
+  const utcHour = now.getUTCHours();
+  const cumulativeBudget = Math.ceil(dailyBudget * (utcHour + 1) / 24);
+  const row = await env.DB.prepare(`
+    SELECT count(*) AS attempts FROM ai_attempts
+    WHERE substr(attempted_at,1,10)=substr(datetime('now'),1,10)
+  `).first();
+  const attemptsToday = Math.max(0, Number(row?.attempts || 0));
+  const remainingHeadroom = Math.max(0, cumulativeBudget - attemptsToday);
+  const remainingDaily = Math.max(0, dailyBudget - attemptsToday);
+  const topicHeadroom = Math.floor(remainingHeadroom / maxCallsPerTopic);
+  return {
+    ok: true,
+    generatedAt: now.toISOString(),
+    timezone: 'UTC',
+    daily_budget: dailyBudget,
+    attempts_today: attemptsToday,
+    cumulative_budget: cumulativeBudget,
+    remaining_headroom: remainingHeadroom,
+    remaining_daily: remainingDaily,
+    topic_headroom: topicHeadroom,
+    max_calls_per_topic: maxCallsPerTopic,
+    paced: remainingHeadroom === 0 && remainingDaily > 0,
+    exhausted: remainingDaily === 0,
+    next_release_at: remainingHeadroom === 0 && remainingDaily > 0 ? nextBudgetReleaseIso(now) : null
+  };
+}
+
 async function fetchRealDashboardFallback(env, category, reason) {
   const fallbackUrl = String(env.PUBLIC_FALLBACK_DASHBOARD_URL || DEFAULT_REAL_DASHBOARD_FALLBACK).trim();
   const maxAgeMs = Math.max(1, Number(env.FALLBACK_MAX_AGE_HOURS || 4)) * 60 * 60 * 1000;
@@ -162,6 +200,13 @@ async function externalIngest(env, request, sourceId) {
 export async function routeApi(env, request) {
   const url = new URL(request.url);
   if (url.pathname === '/api/health') return json({ ok: true, time: new Date().toISOString() });
+  if (url.pathname === '/api/ai-budget' && request.method === 'GET') {
+    try {
+      return json(await aiBudgetStatus(env));
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message || error), generatedAt: new Date().toISOString() }, { status: 503 });
+    }
+  }
   if (url.pathname === '/api/dashboard' && request.method === 'GET') return dashboard(env, url);
   if (url.pathname.startsWith('/api/topic/') && request.method === 'GET') return topicDetail(env, decodeURIComponent(url.pathname.slice('/api/topic/'.length)));
   if (url.pathname === '/api/subscribe' && request.method === 'POST') return subscribe(env, request);
