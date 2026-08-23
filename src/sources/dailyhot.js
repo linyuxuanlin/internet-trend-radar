@@ -6,7 +6,7 @@ const SOURCE_NAMES = {
 };
 
 function pickHeat(item) {
-  const candidates = [item.hot, item.hotValue, item.hot_value, item.heat, item.score, item.view, item.views, item.data?.view, item.data?.like];
+  const candidates = [item.hot, item.hotValue, item.hot_value, item.hotness, item.heat, item.score, item.view, item.views, item.data?.view, item.data?.like];
   return Math.max(0, ...candidates.map(numberFromUnknown));
 }
 
@@ -107,6 +107,22 @@ function mapDouyinRows(body, upstream) {
   };
 }
 
+function mapDouyinHotListRows(body, upstream) {
+  const rows = Array.isArray(body?.data?.list) ? body.data.list : [];
+  if (!rows.length) throw new Error('Douyin hot-list response empty');
+  return {
+    body: { title: '抖音' },
+    upstream,
+    list: rows.map((v, i) => ({
+      id: v.id || v.sentence_id || v.url || `douyin-hot-list-${i}`,
+      title: v.title || v.word || v.sentence,
+      hot: v.hotness || v.hot_value || v.hot || v.score,
+      timestamp: v.timestamp || v.event_time,
+      url: v.url || (v.sentence_id ? `https://www.douyin.com/hot/${v.sentence_id}` : `https://www.douyin.com/search/${encodeURIComponent(v.title || v.word || v.sentence || '')}`)
+    }))
+  };
+}
+
 async function fetchDouyinDirect() {
   const errors = [];
   try {
@@ -136,6 +152,17 @@ async function fetchDouyinDirect() {
     return mapDouyinRows(body, upstream);
   } catch (err) {
     errors.push(`aa1: ${String(err?.message || err)}`);
+  }
+
+  // Keep an independent no-key provider after AA1 so one mirror outage does not
+  // silently drop Douyin from the real-data dashboard. This endpoint exposes
+  // rank/title/hotness plus canonical douyin.com hot URLs.
+  try {
+    const upstream = 'https://api.luochen.sbs/API/hot_list.php?platform=douyin';
+    const { body } = await fetchJson(upstream, { cf: { cacheTtl: 60, cacheEverything: false } });
+    return mapDouyinHotListRows(body, upstream);
+  } catch (err) {
+    errors.push(`luochen: ${String(err?.message || err)}`);
   }
 
   throw new Error(errors.join('; '));
