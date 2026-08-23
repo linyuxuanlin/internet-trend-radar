@@ -1,0 +1,106 @@
+#!/usr/bin/env node
+
+const DEFAULT_BASE_URL = 'https://internet-trend-radar.linyuxuanlin.workers.dev';
+const EXPECTED_MODEL = process.env.EXPECTED_AI_MODEL || '@cf/meta/llama-3.1-8b-instruct-fast';
+const FORBIDDEN_MODELS = new Set([
+  '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
+]);
+
+export function validateModelUsage(debug) {
+  if (!debug || typeof debug !== 'object' || !debug.ai) {
+    throw new Error('debug response is missing ai diagnostics');
+  }
+  if (debug.preview === true) throw new Error('debug endpoint must not use preview data');
+
+  const configured = String(debug.ai.model || '');
+  if (configured !== EXPECTED_MODEL) {
+    throw new Error(`configured AI model drifted: got ${configured || '<missing>'}, expected ${EXPECTED_MODEL}`);
+  }
+
+  const recentAttempts = Number(debug.ai.recent_attempts_1h || 0);
+  const stats = Array.isArray(debug.ai.model_stats_1h) ? debug.ai.model_stats_1h : [];
+  const summedAttempts = stats.reduce((sum, row) => sum + Math.max(0, Number(row?.attempts || 0)), 0);
+
+  if (recentAttempts > 0 && stats.length === 0) {
+    throw new Error(`recent_attempts_1h=${recentAttempts} but model_stats_1h is empty`);
+  }
+  if (stats.length > 0 && summedAttempts !== recentAttempts) {
+    throw new Error(`model_stats_1h attempt total ${summedAttempts} does not match recent_attempts_1h ${recentAttempts}`);
+  }
+
+  const unexpected = [];
+  for (const row of stats) {
+    const model = String(row?.model || 'unknown');
+    const attempts = Math.max(0, Number(row?.attempts || 0));
+    if (attempts === 0) continue;
+    if (FORBIDDEN_MODELS.has(model) || model !== EXPECTED_MODEL) {
+      unexpected.push({ model, attempts, successes: Number(row?.successes || 0), failures: Number(row?.failures || 0), last_at: row?.last_at || null });
+    }
+  }
+  if (unexpected.length) {
+    throw new Error(`unexpected model used in the last hour: ${JSON.stringify(unexpected)}`);
+  }
+
+  return {
+    configured_model: configured,
+    recent_attempts_1h: recentAttempts,
+    model_stats_1h: stats,
+    runtime_model_verified: recentAttempts > 0
+  };
+}
+
+function runSelfTest() {
+  const good = {
+    preview: false,
+    ai: {
+      model: EXPECTED_MODEL,
+      recent_attempts_1h: 3,
+      model_stats_1h: [{ model: EXPECTED_MODEL, attempts: 3, successes: 2, failures: 1, success_rate: 66.7, last_at: '2026-08-23T15:00:00.000Z' }]
+    }
+  };
+  const result = validateModelUsage(good);
+  if (!result.runtime_model_verified) throw new Error('self-test expected runtime model to be verified');
+
+  const idle = validateModelUsage({ preview: false, ai: { model: EXPECTED_MODEL, recent_attempts_1h: 0, model_stats_1h: [] } });
+  if (idle.runtime_model_verified) throw new Error('idle window must not claim runtime model verification');
+
+  const rejected = [
+    { preview: false, ai: { model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', recent_attempts_1h: 0, model_stats_1h: [] } },
+    { preview: false, ai: { model: EXPECTED_MODEL, recent_attempts_1h: 2, model_stats_1h: [] } },
+    { preview: false, ai: { model: EXPECTED_MODEL, recent_attempts_1h: 2, model_stats_1h: [{ model: EXPECTED_MODEL, attempts: 1 }] } },
+    { preview: false, ai: { model: EXPECTED_MODEL, recent_attempts_1h: 2, model_stats_1h: [{ model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', attempts: 2, successes: 0, failures: 2 }] } }
+  ];
+  let failures = 0;
+  for (const payload of rejected) {
+    try { validateModelUsage(payload); } catch { failures += 1; }
+  }
+  if (failures !== rejected.length) throw new Error(`self-test expected ${rejected.length} rejected payloads, got ${failures}`);
+  console.log('live AI model usage watchdog self-test passed');
+}
+
+async function probe(baseUrl) {
+  const endpoint = new URL('/api/debug', new URL(baseUrl));
+  endpoint.searchParams.set('_runtime_model_watchdog', `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const response = await fetch(endpoint, {
+    headers: {
+      accept: 'application/json',
+      'cache-control': 'no-cache, no-store',
+      pragma: 'no-cache',
+      'user-agent': 'internet-trend-radar-runtime-model-watchdog/1.0'
+    },
+    signal: AbortSignal.timeout(15_000)
+  });
+  if (!response.ok) throw new Error(`debug probe HTTP ${response.status}`);
+  const payload = await response.json();
+  const result = validateModelUsage(payload);
+  console.log(JSON.stringify({ ok: true, origin: endpoint.origin, ...result, generatedAt: payload.generatedAt || null }, null, 2));
+}
+
+const args = process.argv.slice(2);
+if (args.includes('--self-test')) {
+  runSelfTest();
+} else {
+  const urlArg = args.find(arg => arg.startsWith('--url='));
+  const configured = urlArg ? urlArg.slice('--url='.length) : process.env.AI_MODEL_USAGE_URL || DEFAULT_BASE_URL;
+  await probe(configured);
+}
