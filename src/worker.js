@@ -33,7 +33,7 @@ export function isPreviewPayload(payload) {
   return Boolean(payload && typeof payload === 'object' && payload.preview === true);
 }
 
-async function rejectPreviewResponse(response) {
+export async function rejectPreviewResponse(response) {
   const contentType = String(response.headers.get('content-type') || '').toLowerCase();
   if (!contentType.includes('application/json')) return response;
 
