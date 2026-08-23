@@ -1,7 +1,7 @@
 import { collectDailyHot } from '../src/sources/dailyhot.js';
 
-const required = String(process.env.REQUIRED_DAILYHOT_SOURCES || 'weibo,zhihu').split(',').map(x => x.trim()).filter(Boolean);
-const optional = String(process.env.OPTIONAL_DAILYHOT_SOURCES || 'douyin').split(',').map(x => x.trim()).filter(Boolean);
+const required = String(process.env.REQUIRED_DAILYHOT_SOURCES || 'weibo,zhihu,douyin').split(',').map(x => x.trim()).filter(Boolean);
+const optional = String(process.env.OPTIONAL_DAILYHOT_SOURCES || '').split(',').map(x => x.trim()).filter(Boolean);
 const env = {
   DAILYHOT_BASES: process.env.DAILYHOT_BASES || 'https://api.guole.fun,https://api-hot.imsyy.top'
 };
