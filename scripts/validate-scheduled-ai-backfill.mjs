@@ -86,11 +86,17 @@ const config = JSON.parse(wrangler.replace(/^\s*\/\/.*$/gm, ''));
 const topN = Number(config?.vars?.AI_TOP_N || 0);
 if (topN !== 10) throw new Error(`expected bounded AI_TOP_N=10, got ${topN}`);
 if (topN > 12) throw new Error(`AI_TOP_N must remain bounded to avoid inference bursts, got ${topN}`);
+const productionBudget = Number(config?.vars?.AI_DAILY_MODEL_CALL_BUDGET || 0);
+if (productionBudget !== 24) throw new Error(`expected production AI_DAILY_MODEL_CALL_BUDGET=24, got ${productionBudget}`);
+if (productionBudget > 24) throw new Error(`production daily model-call budget must stay conservative under the free neuron allocation, got ${productionBudget}`);
 if (String(config?.vars?.AI_DISABLE_FALLBACK || '') !== '1') {
   throw new Error('production must disable low-yield fallback until diagnostics show it is competitive');
 }
-if (config?.vars?.AI_MODEL !== '@cf/meta/llama-3.3-70b-instruct-fp8-fast') {
+if (config?.vars?.AI_MODEL !== '@cf/meta/llama-3.1-8b-instruct-fast') {
   throw new Error(`unexpected production primary model: ${config?.vars?.AI_MODEL}`);
 }
+if (config?.vars?.AI_FALLBACK_MODEL !== '@cf/meta/llama-3.1-8b-instruct-fast') {
+  throw new Error(`unexpected production fallback model: ${config?.vars?.AI_FALLBACK_MODEL}`);
+}
 
-console.log('Scheduled AI backfill, collection-safe degradation, paced daily AI budget, production budget observability, and primary-only production AI policy validated');
+console.log('Scheduled AI backfill, collection-safe degradation, paced daily AI budget, production budget observability, and neuron-efficient primary-only production AI policy validated');
