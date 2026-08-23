@@ -48,6 +48,32 @@ jobs:
         id: coherence
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         run: node scripts/validate-live-ai-debug-coherence.mjs
+      - name: Verify production Workers AI model
+        id: model
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        env:
+          EXPECTED_AI_MODEL: '@cf/meta/llama-3.1-8b-instruct-fast'
+        run: |
+          node --input-type=module <<'NODE'
+          const endpoint = new URL('https://internet-trend-radar.linyuxuanlin.workers.dev/api/debug');
+          endpoint.searchParams.set('_model_watchdog', `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+          const response = await fetch(endpoint, {
+            headers: {
+              accept: 'application/json',
+              'cache-control': 'no-cache, no-store',
+              pragma: 'no-cache',
+              'user-agent': 'internet-trend-radar-ai-model-watchdog/1.0'
+            },
+            signal: AbortSignal.timeout(15000)
+          });
+          if (!response.ok) throw new Error(`debug probe HTTP ${response.status}`);
+          const payload = await response.json();
+          if (payload?.preview === true) throw new Error('debug endpoint must not use preview data');
+          const actual = String(payload?.ai?.model || '');
+          const expected = process.env.EXPECTED_AI_MODEL;
+          if (actual !== expected) throw new Error(`production AI model drifted: got ${actual || '<missing>'}, expected ${expected}`);
+          console.log(JSON.stringify({ ok: true, model: actual, generatedAt: payload.generatedAt || null }));
+          NODE
       - name: Explain advisory PR probe
-        if: ${{ github.event_name == 'pull_request' && (steps.live.outcome == 'failure' || steps.coherence.outcome == 'failure') }}
+        if: ${{ github.event_name == 'pull_request' && (steps.live.outcome == 'failure' || steps.coherence.outcome == 'failure' || steps.model.outcome == 'failure') }}
         run: echo 'Production probes are advisory on PRs because the candidate Worker code is not deployed to production yet.'
