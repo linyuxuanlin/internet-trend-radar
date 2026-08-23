@@ -18,6 +18,8 @@ jobs:
         run: |
           node --check scripts/analyze-ai-freshness-coverage.mjs
           node scripts/analyze-ai-freshness-coverage.mjs --self-test
+          node --check scripts/validate-live-release-coherence.mjs
+          node scripts/validate-live-release-coherence.mjs --self-test
       - name: Probe live real dashboard coverage
         # A PR cannot guarantee that its code is deployed yet, so live drift is advisory
         # there. On main, manual runs, and the hourly watchdog, stale public data must fail.
@@ -28,3 +30,15 @@ jobs:
           MAX_DASHBOARD_AGE_HOURS: 3
         run: |
           node scripts/analyze-ai-freshness-coverage.mjs
+      - name: Probe live release coherence
+        # Verify that all public JSON assets are from one real deployment, not a split CDN cache.
+        # Keep PR probes advisory because the PR code is not deployed yet; scheduled/main probes are strict.
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        env:
+          DASHBOARD_URL: https://linyuxuanlin.github.io/internet-trend-radar/data/dashboard.json
+          HEALTH_URL: https://linyuxuanlin.github.io/internet-trend-radar/data/health.json
+          OPPORTUNITIES_URL: https://linyuxuanlin.github.io/internet-trend-radar/data/opportunities.json
+          FETCH_TIMEOUT_MS: 15000
+          MAX_RELEASE_AGE_MS: 10800000
+        run: |
+          node scripts/validate-live-release-coherence.mjs
