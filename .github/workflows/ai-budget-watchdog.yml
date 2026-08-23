@@ -1,0 +1,45 @@
+name: AI Budget Watchdog
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'scripts/validate-live-ai-budget.mjs'
+      - '.github/workflows/ai-budget-watchdog.yml'
+      - 'wrangler.jsonc'
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'scripts/validate-live-ai-budget.mjs'
+      - '.github/workflows/ai-budget-watchdog.yml'
+      - 'wrangler.jsonc'
+  schedule:
+    - cron: '52 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-budget-watchdog-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate watchdog contract
+        run: node scripts/validate-live-ai-budget.mjs --self-test
+      - name: Probe production AI budget
+        id: live
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        run: node scripts/validate-live-ai-budget.mjs
+      - name: Explain advisory PR probe
+        if: ${{ github.event_name == 'pull_request' && steps.live.outcome == 'failure' }}
+        run: echo 'Production probe is advisory on PRs because the candidate Worker code is not deployed to production yet.'
