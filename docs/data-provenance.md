@@ -36,7 +36,7 @@
 | --- | --- | --- | --- | --- |
 | 微博 | `weibo.com/ajax/side/hotSearch`；失败时可能使用 DailyHot mirror | `data.realtime[].num` | 未提供（`NULL`） | 只在微博榜内解释 |
 | 知乎 | `api.zhihu.com/topstory/hot-lists/total`；失败时可能使用 DailyHot mirror | `detail_text` 解析出的官方展示热度 | 未提供（`NULL`） | 只在知乎榜内解释 |
-| 抖音 | 官方接口失败后按顺序尝试 AA1、Luochen、Fanyia | `word_list[].hot_value` / `hot` / `score` | 未提供（`NULL`） | 必须同时查看 `kind=mirror-fallback` 和实际 upstream |
+| 抖音 | 官方接口失败后按顺序尝试 AA1、Luochen、Fanyia | 依据实际响应选择 `word_list[]`、`data.list[]` 或 `data[]` 中的热榜字段；每条记录的 `metric_paths.heat` 保留实际命中字段 | 未提供（`NULL`） | 必须同时查看 `kind=mirror-fallback` 和实际 upstream |
 | 少数派 | `sspai.com/feed` 官方 RSS | 无（`NULL`） | 无（`NULL`） | RSS 只提供文章发布信息，不代表平台热度 |
 | 36 氪 | `gateway.36kr.com/api/mis/nav/home/nav/rank/hot`；RSS fallback 可能无计数 | `templateMaterial.statRead` | `statCollect + statComment + statPraise` | RSS 无字段时对应值为 `NULL` |
 | 掘金 | `api.juejin.cn/recommend_api/v1/article/recommend_all_feed` | `article_info.view_count` | `digg_count + comment_count + collect_count + share_count` | 只在掘金推荐流内解释 |
