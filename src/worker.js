@@ -59,6 +59,11 @@ export async function rejectPreviewResponse(response) {
   }, { status: 503 });
 }
 
+export function propagateScheduledFailure(error) {
+  console.error('scheduled job failed', error);
+  throw error;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -91,7 +96,7 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
-    ctx.waitUntil((async () => {
+    const run = (async () => {
       await ensureSchema(env);
       if (controller.cron === '5 0 * * *') {
         await sendDailyDigest(env);
@@ -105,6 +110,11 @@ export default {
       const collection = await collectAll(env);
       console.log('scheduled collection with paced AI enrichment', collection.ai);
       return { collection, ai: collection.ai };
-    })().catch(err => console.error('scheduled job failed', err)));
+    })();
+
+    // Do not swallow cron failures. A rejected waitUntil promise is visible to
+    // Workers observability and prevents a broken collection/inference run from
+    // looking successful merely because the error was logged.
+    ctx.waitUntil(run.catch(propagateScheduledFailure));
   }
 };
