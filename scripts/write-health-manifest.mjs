@@ -43,7 +43,10 @@ function sourceHealthRow(source) {
     lastError: source?.last_error || null,
     lastErrorType: failure.type,
     lastErrorCode: failure.code,
-    freshnessSeconds
+    freshnessSeconds,
+    upstream: source?.upstream || null,
+    upstreamProvider: source?.upstream_provider || null,
+    upstreamStage: source?.upstream_stage || null
   };
 }
 
@@ -61,7 +64,10 @@ const requiredDirect = REQUIRED_DIRECT_CN.map(id => sourceHealth.find(item => it
   lastError: 'missing source row',
   lastErrorType: 'unknown',
   lastErrorCode: null,
-  freshnessSeconds: null
+  freshnessSeconds: null,
+  upstream: null,
+  upstreamProvider: null,
+  upstreamStage: null
 });
 
 const ai = dashboard.ai || {};
@@ -70,7 +76,7 @@ const aiOpportunities = Array.isArray(dashboard.topics)
   : 0;
 
 const manifest = {
-  schemaVersion: 4,
+  schemaVersion: 5,
   generatedAt: dashboard.generatedAt || null,
   buildSha: dashboard.buildSha || null,
   preview: dashboard.preview,
