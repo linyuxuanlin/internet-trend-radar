@@ -93,6 +93,17 @@ if (sourceScope.length < 40) fail('data_contract.source_scope is too vague to es
 const topics = Array.isArray(dashboard.topics) ? dashboard.topics : [];
 const sources = Array.isArray(dashboard.sources) ? dashboard.sources : [];
 const healthy = sources.filter(source => source?.last_success_at && Number(source?.last_item_count || 0) > 0);
+const coverage = dashboard.coverage || {};
+const expectedCoverage = {
+  active_sources: sources.length,
+  active_cn_sources: sources.filter(source => String(source?.region || '').toLowerCase() === 'cn').length,
+  active_global_sources: sources.filter(source => String(source?.region || '').toLowerCase() !== 'cn').length,
+  healthy_active_sources: healthy.length,
+  degraded_active_sources: sources.length - healthy.length
+};
+for (const [key, expected] of Object.entries(expectedCoverage)) {
+  if (Number(coverage[key]) !== expected) fail(`coverage.${key} mismatch: declared=${coverage[key]} expected=${expected}`);
+}
 const directCn = healthy.filter(source => source.region === 'cn' && ['official-api', 'official-rss', 'official-page'].includes(source.kind));
 const directCnIds = new Set(directCn.map(source => source.id));
 const generatedAt = Date.parse(dashboard.generatedAt);
