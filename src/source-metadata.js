@@ -9,9 +9,9 @@ export const SOURCE_METRICS = {
   v2ex: { heat: null, engagement: 'topics[].replies', note: 'official hot-topics API; replies are interaction count, not heat' },
   juejin: { heat: 'article_info.view_count', engagement: 'digg_count+comment_count+collect_count+share_count', note: 'official recommendation API' },
   '36kr': { heat: 'templateMaterial.statRead', engagement: 'statCollect+statComment+statPraise', note: 'official Gateway hot-rank API; RSS fallback may omit metrics' },
-  baidu: { heat: 'fallback item.hotScore|item.hot_score|item.hot|item.hotValue|item.hot_value|item.hotness|item.heat (NULL when absent; score/view/index excluded)', engagement: null, note: 'shared fallback contract; ranking/index/score/view fields are not promoted to heat' },
-  toutiao: { heat: 'fallback item.HotValue|item.hot_value|item.hotValue|item.Heat|item.heat|item.hot|item.hotness (score/view excluded)', engagement: null, note: 'shared fallback contract; no engagement counter is inferred' },
-  hupu: { heat: 'fallback item.heat|item.hot|item.hotValue|item.hot_value|item.hotness (score/view/rank excluded)', engagement: null, note: 'shared fallback contract; rank and tag identifiers are not heat' },
+  baidu: { heat: 'fallback item.hotScore|item.hot_score|item.hot|item.hotValue|item.hot_value|item.hotness|item.heat (NULL when absent; score/view/index excluded)', heat_paths: ['item.hotScore', 'item.hot_score', 'item.hot', 'item.hotValue', 'item.hot_value', 'item.hotness', 'item.heat'], engagement: null, note: 'shared fallback contract; ranking/index/score/view fields are not promoted to heat' },
+  toutiao: { heat: 'fallback item.HotValue|item.hot_value|item.hotValue|item.Heat|item.heat|item.hot|item.hotness (score/view excluded)', heat_paths: ['item.HotValue', 'item.hot_value', 'item.hotValue', 'item.Heat', 'item.heat', 'item.hot', 'item.hotness'], engagement: null, note: 'shared fallback contract; no engagement counter is inferred' },
+  hupu: { heat: 'fallback item.heat|item.hot|item.hotValue|item.hot_value|item.hotness (score/view/rank excluded)', heat_paths: ['item.heat', 'item.hot', 'item.hotValue', 'item.hot_value', 'item.hotness'], engagement: null, note: 'shared fallback contract; rank and tag identifiers are not heat' },
   ithome: { heat: null, engagement: null, note: 'official RSS feed; publication feed does not expose a native heat or engagement counter' },
   solidot: { heat: null, engagement: null, note: 'official RSS feed; publication feed does not expose a native heat or engagement counter' },
   hackernews: { heat: 'item.score', engagement: 'item.descendants', note: 'official Firebase item API' },
@@ -20,9 +20,9 @@ export const SOURCE_METRICS = {
 };
 
 const STATIC_SOURCE_METRICS = {
-  baidu: { heat: 'official page item.hotScore|item.hot_score (NULL when absent; item.index is rank, never heat)', engagement: null, note: 'official Baidu hot-board page; ranking/index fields are not promoted to heat' },
-  toutiao: { heat: 'official board item.HotValue|item.hot_value|item.hotValue|item.Heat|item.heat', engagement: null, note: 'official Toutiao hot-board value; no engagement counter is inferred' },
-  hupu: { heat: 'official page item.heat|item.hot|item.hotValue', engagement: null, note: 'official Hupu hot-page value; rank and tag identifiers are not heat' }
+  baidu: { heat: 'official page item.hotScore|item.hot_score (NULL when absent; item.index is rank, never heat)', heat_paths: ['item.hotScore', 'item.hot_score'], engagement: null, note: 'official Baidu hot-board page; ranking/index fields are not promoted to heat' },
+  toutiao: { heat: 'official board item.HotValue|item.hot_value|item.hotValue|item.Heat|item.heat', heat_paths: ['item.HotValue', 'item.hot_value', 'item.hotValue', 'item.Heat', 'item.heat'], engagement: null, note: 'official Toutiao hot-board value; no engagement counter is inferred' },
+  hupu: { heat: 'official page item.heat|item.hot|item.hotValue', heat_paths: ['item.heat', 'item.hot', 'item.hotValue'], engagement: null, note: 'official Hupu hot-page value; rank and tag identifiers are not heat' }
 };
 
 export function metricMetadata(sourceId, kind = null) {
