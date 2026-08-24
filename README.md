@@ -4,8 +4,8 @@
 
 ## MVP 已包含
 
-- 当前 Worker 启用的中文源：微博官方热搜接口、知乎官方热榜接口、抖音官方接口/明确标注的镜像 fallback、36氪 Gateway 热榜、掘金推荐接口、V2EX 官方 hot topics API
-- 当前 Worker 停用的来源：B站、百度、今日头条、虎扑；它们仍保留指标定义和历史数据，但不会被计入当前健康来源
+- 当前 Worker/D1 实时评分范围：微博、知乎、抖音、36氪、掘金、V2EX，加 Hacker News、GitHub；小红书只在外部 Bridge 推送成功后进入实时范围。Worker 的 `coverage.active_*` 与 `sources[].enabled` 是当前范围的权威依据。
+- GitHub Pages 静态快照范围更大：静态适配器还会采集少数派、B站、百度、今日头条、虎扑、IT之家、Solidot 等；这批来源只代表该 Pages 快照，不等于当前 Worker/D1 已启用。静态快照的 `data_contract.source_scope` 与 `coverage.active_*` 是该快照的权威依据。
 - 全球源：Hacker News 官方 Firebase API、GitHub Search API（按近 36 小时 UTC 日期边界筛选新仓库并按 Star 排序；不是 GitHub Trending）
 - 小红书：External Collector Bridge，供需要登录态/浏览器环境的 `xiaohongshu-mcp` 独立运行后推送数据
 - D1：raw snapshots / topics / topic snapshots / evidence / subscribers / digests
@@ -133,7 +133,7 @@ npx wrangler deploy --temporary
 
 ## 数据层原则
 
-完整的来源、字段映射和 fallback 说明见 [`docs/data-provenance.md`](docs/data-provenance.md)。
+完整的来源、字段映射、fallback 和 Worker/Pages 范围差异说明见 [`docs/data-provenance.md`](docs/data-provenance.md)。
 
 MVP 允许先借助第三方聚合项目快速获得覆盖面，但长期不会把单一聚合 API 当作唯一数据源。每个平台都应逐步升级为独立 Source Adapter，并保留：
 
