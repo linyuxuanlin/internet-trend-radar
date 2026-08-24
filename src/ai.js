@@ -155,6 +155,38 @@ function isRecoverableInferenceFailure(reason) {
   return /^inference-error:(rate-limit|model-not-found|timeout|upstream|unknown)(?::|$)/.test(String(reason || ''));
 }
 
+const OPPORTUNITY_TYPES = new Set(['内容', '工具', '服务', '电商', '投资观察', '风险管理观察', '观察']);
+
+function evidenceCorpus(topic = {}, evidence = []) {
+  const rawSignals = Array.isArray(topic.raw_signals) ? topic.raw_signals : [];
+  const rawText = typeof topic.raw_evidence_text === 'string' ? topic.raw_evidence_text : '';
+  return [
+    topic.canonical_title, topic.category, topic.current_score, topic.breakout_score,
+    topic.source_count, topic.mention_count, rawText,
+    ...rawSignals.map(signal => JSON.stringify(signal)),
+    ...(Array.isArray(evidence) ? evidence : []).map(item => JSON.stringify(item))
+  ].filter(value => value !== null && value !== undefined).join(' ');
+}
+
+function numericClaims(text) {
+  return [...String(text || '').matchAll(/\d{2,}/g)].map(match => match[0]);
+}
+
+export function validateAIEvidenceClaims(analysis, topic = {}, evidence = []) {
+  const corpus = evidenceCorpus(topic, evidence);
+  const text = [analysis?.summary, analysis?.why_now, analysis?.risks,
+    ...(Array.isArray(analysis?.opportunities) ? analysis.opportunities.flatMap(item => [item?.idea, item?.rationale]) : [])]
+    .filter(Boolean).join(' ');
+  const unsupported = [...new Set(numericClaims(text).filter(number => !corpus.includes(number)))];
+  if (unsupported.length) return `unsupported-evidence-number:${unsupported.slice(0, 3).join(',')}`;
+  const invalidType = (analysis?.opportunities || []).find(item => {
+    const type = String(item?.type || '').trim();
+    return type && !OPPORTUNITY_TYPES.has(type);
+  });
+  if (invalidType) return 'invalid-opportunity-type';
+  return null;
+}
+
 export function isStoredAIValid(topic) {
   if (!topic) return false;
   const summary = String(topic.ai_summary || '').trim();
@@ -163,7 +195,8 @@ export function isStoredAIValid(topic) {
   if (summary.length < 20 || whyNow.length < 20) return false;
   if (!Array.isArray(opportunities) || opportunities.length < 1) return false;
   if (hasLowValuePhrase(summary) || hasLowValuePhrase(whyNow)) return false;
-  return opportunities.every(o => String(o?.idea || '').trim() && String(o?.rationale || '').trim());
+  if (!opportunities.every(o => String(o?.idea || '').trim() && String(o?.rationale || '').trim())) return false;
+  return !validateAIEvidenceClaims({ summary, why_now: whyNow, risks: topic.ai_risks, opportunities }, topic, topic.raw_signals || []);
 }
 
 export function isStoredAIUsable(topic, maxAgeHours = 6, now = Date.now()) {
@@ -183,7 +216,7 @@ export function hasCurrentEvidence(topic, evidence = []) {
   return sourceIds.size >= expectedSources;
 }
 
-function normalizeAnalysis(parsed, model, topicTitle) {
+function normalizeAnalysis(parsed, model, topicTitle, topic, evidence) {
   if (!parsed || typeof parsed !== 'object') return { analysis: null, failureReason: 'invalid-json' };
   const summary = String(parsed.summary || '').trim();
   const whyNow = String(parsed.why_now || '').trim();
@@ -201,6 +234,8 @@ function normalizeAnalysis(parsed, model, topicTitle) {
   if (isTitleEcho(summary, topicTitle)) return { analysis: null, failureReason: 'title-echo' };
   if (summary.length < 20 || whyNow.length < 20) return { analysis: null, failureReason: 'too-short' };
   if (hasLowValuePhrase(summary) || hasLowValuePhrase(whyNow)) return { analysis: null, failureReason: 'low-value-language' };
+  const evidenceFailure = validateAIEvidenceClaims({ summary, why_now: whyNow, risks, opportunities }, topic, evidence);
+  if (evidenceFailure) return { analysis: null, failureReason: evidenceFailure };
   return { analysis: { summary, why_now: whyNow, opportunities, risks }, failureReason: null };
 }
 
@@ -214,7 +249,7 @@ const AI_RESPONSE_SCHEMA = {
       items: {
         type: 'object',
         properties: {
-          type: { type: 'string' }, idea: { type: 'string' }, rationale: { type: 'string' },
+          type: { type: 'string', enum: [...OPPORTUNITY_TYPES] }, idea: { type: 'string' }, rationale: { type: 'string' },
           difficulty: { type: 'string' }, time_to_market: { type: 'string' }, confidence: { type: 'number' }
         },
         required: ['idea', 'rationale']
@@ -237,7 +272,7 @@ const JSON_MODE_MODELS = new Set([
   '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b'
 ]);
 
-const FALLBACK_REASONS = new Set(['invalid-json', 'incomplete-output', 'too-short', 'low-value-language', 'title-echo', 'empty-model-response']);
+const FALLBACK_REASONS = new Set(['invalid-json', 'incomplete-output', 'too-short', 'low-value-language', 'title-echo', 'empty-model-response', 'invalid-opportunity-type']);
 
 function buildPrompt(topic, evidence) {
   return `你是互联网趋势分析师和产品机会研究员。基于真实证据分析热点。
@@ -252,7 +287,7 @@ summary 即使提到主题，也必须补充至少一个证据支持的新事实
 证据：${evidence.map(x => `${x.source_id} #${x.rank || '-'} ${x.title}；source_kind=${x.source_kind || '未声明'}；原始 heat=${x.raw_heat ?? '未提供'}；engagement=${x.raw_engagement ?? '未提供'}；实际字段=${x.heat_metric_path || '未记录'} / ${x.engagement_metric_path || '未记录'}；指标定义=${x.metric_definition || '未声明'}；upstream=${x.upstream || '未记录'}；采集时间=${x.captured_at || '-'}`).join('\n')}
 
 只输出 JSON：
-{"summary":"发生了什么，说明事件本质而不是标题改写","why_now":"为什么现在发生，引用可观察信号（时间、来源、热度变化等）","opportunities":[{"type":"内容|工具|服务|电商|投资观察","idea":"具体谁可以做什么","rationale":"为什么存在需求和验证路径","difficulty":"低|中|高","time_to_market":"当天|1-3天|1周+","confidence":0}],"risks":"主要风险和如何验证"}
+{"summary":"发生了什么，说明事件本质而不是标题改写","why_now":"为什么现在发生，引用可观察信号（时间、来源、热度变化等）","opportunities":[{"type":"从内容、工具、服务、电商、投资观察、风险管理观察、观察中选择一个","idea":"具体谁可以做什么","rationale":"为什么存在需求和验证路径","difficulty":"低|中|高","time_to_market":"当天|1-3天|1周+","confidence":0}],"risks":"主要风险和如何验证"}
 
 禁止：把趋势指数当成平台热度；禁止跨平台直接比较原始热度；禁止使用证据中没有出现的数字、日期、来源、产品事实或增长结论；证据没有提供时必须明确说“未提供”；禁止值得关注、热度很高、前景广阔等空泛表达。`;
 }
@@ -270,7 +305,7 @@ async function runModel(env, model, topic, evidence, { structured = false } = {}
   const out = await env.AI.run(model, request);
   const payload = extractModelPayload(out);
   if (!payload.rawText) return { analysis: null, failureReason: 'empty-model-response', rawText: '', model };
-  const normalized = normalizeAnalysis(payload.parsed, model, topic.canonical_title);
+  const normalized = normalizeAnalysis(payload.parsed, model, topic.canonical_title, topic, evidence);
   return { ...normalized, rawText: payload.rawText, model };
 }
 
