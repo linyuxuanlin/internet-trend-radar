@@ -123,6 +123,31 @@ function mapDouyinHotListRows(body, upstream) {
   };
 }
 
+function mapDouyinFlatRows(body, upstream) {
+  const rows = Array.isArray(body?.data)
+    ? body.data
+    : Array.isArray(body?.data?.list)
+      ? body.data.list
+      : Array.isArray(body?.list)
+        ? body.list
+        : [];
+  if (!rows.length) throw new Error('Douyin flat-list response empty');
+  return {
+    body: { title: '抖音' },
+    upstream,
+    list: rows.map((v, i) => {
+      const title = v.title || v.word || v.sentence || v.name || '';
+      return {
+        id: v.id || v.sentence_id || v.url || v.mobileUrl || v.mobilUrl || `douyin-flat-${i}`,
+        title,
+        hot: v.hot || v.hotness || v.hot_value || v.score,
+        timestamp: v.timestamp || v.event_time,
+        url: v.url || v.mobileUrl || v.mobilUrl || `https://www.douyin.com/search/${encodeURIComponent(title)}`
+      };
+    }).filter(v => String(v.title || '').trim())
+  };
+}
+
 async function fetchDouyinDirect() {
   const errors = [];
   try {
@@ -163,6 +188,17 @@ async function fetchDouyinDirect() {
     return mapDouyinHotListRows(body, upstream);
   } catch (err) {
     errors.push(`luochen: ${String(err?.message || err)}`);
+  }
+
+  // Fanyia is an independent public hot-list API whose documented response is a
+  // flat data array with title/hot/url. Keep it last so it only carries traffic
+  // when the official path and both existing mirrors are unavailable.
+  try {
+    const upstream = 'https://api.fanyia.cn/api/douyin/dyhot';
+    const { body } = await fetchJson(upstream, { cf: { cacheTtl: 60, cacheEverything: false } });
+    return mapDouyinFlatRows(body, upstream);
+  } catch (err) {
+    errors.push(`fanyia: ${String(err?.message || err)}`);
   }
 
   throw new Error(errors.join('; '));
