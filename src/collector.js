@@ -154,35 +154,56 @@ async function repairHistoricalMetricProvenance(env) {
   `).run();
 
   const repairs = [];
+  const unprovableMetricCleanups = [];
   for (const [sourceId, definition] of Object.entries(SOURCE_METRICS)) {
     const exact = EXACT_METRIC_PATHS[sourceId] || {};
     const exactUpstreamGate = EXACT_METRIC_PATHS[sourceId]
       ? officialMetricUpstreamPredicate('source_id', "json_extract(raw_json,'$.trendRadarUpstream')")
       : '1=1';
     if (definition.heat) {
-      const path = exact.heat || definition.heat;
-      repairs.push(env.DB.prepare(`
+      if (exact.heat) {
+        repairs.push(env.DB.prepare(`
+          UPDATE raw_items
+             SET raw_json=json_set(raw_json,'$.trendRadarMetrics.heat_path',?)
+           WHERE source_id=? AND heat IS NOT NULL AND json_valid(raw_json)=1
+             AND ${exactUpstreamGate}
+             AND (json_extract(raw_json,'$.trendRadarMetrics.heat_path') IS NULL
+               OR length(trim(json_extract(raw_json,'$.trendRadarMetrics.heat_path'))) = 0)
+        `).bind(exact.heat, sourceId));
+      }
+      unprovableMetricCleanups.push(env.DB.prepare(`
         UPDATE raw_items
-           SET raw_json=json_set(raw_json,'$.trendRadarMetrics.heat_path',?)
-         WHERE source_id=? AND heat IS NOT NULL AND json_valid(raw_json)=1
-           AND ${exactUpstreamGate}
-           AND (${EXACT_METRIC_PATHS[sourceId] ? '1=1' : `json_extract(raw_json,'$.trendRadarMetrics.heat_path') IS NULL
-             OR length(trim(json_extract(raw_json,'$.trendRadarMetrics.heat_path'))) = 0`})
-      `).bind(path, sourceId));
+           SET heat=NULL
+         WHERE source_id=? AND heat IS NOT NULL
+           AND (json_extract(raw_json,'$.trendRadarMetrics.heat_path') IS NULL
+             OR length(trim(json_extract(raw_json,'$.trendRadarMetrics.heat_path'))) = 0)
+      `).bind(sourceId));
     }
     if (definition.engagement) {
-      const path = exact.engagement || definition.engagement;
-      repairs.push(env.DB.prepare(`
+      if (exact.engagement) {
+        repairs.push(env.DB.prepare(`
+          UPDATE raw_items
+             SET raw_json=json_set(raw_json,'$.trendRadarMetrics.engagement_path',?)
+           WHERE source_id=? AND engagement IS NOT NULL AND json_valid(raw_json)=1
+             AND ${exactUpstreamGate}
+             AND (json_extract(raw_json,'$.trendRadarMetrics.engagement_path') IS NULL
+               OR length(trim(json_extract(raw_json,'$.trendRadarMetrics.engagement_path'))) = 0)
+        `).bind(exact.engagement, sourceId));
+      }
+      unprovableMetricCleanups.push(env.DB.prepare(`
         UPDATE raw_items
-           SET raw_json=json_set(raw_json,'$.trendRadarMetrics.engagement_path',?)
-         WHERE source_id=? AND engagement IS NOT NULL AND json_valid(raw_json)=1
-           AND ${exactUpstreamGate}
-           AND (${EXACT_METRIC_PATHS[sourceId] ? '1=1' : `json_extract(raw_json,'$.trendRadarMetrics.engagement_path') IS NULL
-             OR length(trim(json_extract(raw_json,'$.trendRadarMetrics.engagement_path'))) = 0`})
-      `).bind(path, sourceId));
+           SET engagement=NULL
+         WHERE source_id=? AND engagement IS NOT NULL
+           AND (json_extract(raw_json,'$.trendRadarMetrics.engagement_path') IS NULL
+             OR length(trim(json_extract(raw_json,'$.trendRadarMetrics.engagement_path'))) = 0)
+      `).bind(sourceId));
     }
   }
   for (const group of chunks(repairs, 80)) await env.DB.batch(group);
+  // If an older fallback row has a value but no recorded field path, the value
+  // is not auditable. Drop only that unprovable metric; never write a prose
+  // definition into a field-path slot.
+  for (const group of chunks(unprovableMetricCleanups, 80)) await env.DB.batch(group);
 }
 
 function collectionFailure(summary) {
