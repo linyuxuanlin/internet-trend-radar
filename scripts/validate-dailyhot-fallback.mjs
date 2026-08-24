@@ -116,11 +116,63 @@ async function validateDouyinSecondaryFallback() {
   }
 }
 
+async function validateDouyinThirdFallback() {
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    const href = String(url);
+    calls.push(href);
+    if (href.startsWith('https://broken.example/')) throw new TypeError('fetch failed');
+    if (href.startsWith('https://empty.example/')) {
+      return new Response(JSON.stringify({ code: 200, data: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    if (href.includes('/passport/general/login_guiding_strategy/')) {
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    if (href === 'https://v.api.aa1.cn/api/douyin-hot/index.php?aa1=hot') {
+      return new Response('temporarily unavailable', { status: 503, headers: { 'content-type': 'text/plain' } });
+    }
+    if (href === 'https://api.luochen.sbs/API/hot_list.php?platform=douyin') {
+      return new Response('<html>upstream maintenance</html>', { status: 200, headers: { 'content-type': 'text/html' } });
+    }
+    if (href === 'https://api.fanyia.cn/api/douyin/dyhot') {
+      return new Response(JSON.stringify({
+        code: 200,
+        msg: '请求成功',
+        data: [
+          { index: 1, title: '第三抖音热点一', hot: '1044.6万', url: 'https://www.douyin.com/search/%E7%AC%AC%E4%B8%89%E6%8A%96%E9%9F%B3%E7%83%AD%E7%82%B9%E4%B8%80' },
+          { index: 2, title: '第三抖音热点二', hot: '998.1万', mobilUrl: 'https://www.douyin.com/search/%E7%AC%AC%E4%B8%89%E6%8A%96%E9%9F%B3%E7%83%AD%E7%82%B9%E4%BA%8C' },
+          { index: 3, title: '第三抖音热点三', hot: '887.2万' },
+          { index: 4, title: '第三抖音热点四', hot: 7765000 },
+          { index: 5, title: '第三抖音热点五', hot: 6654000 }
+        ]
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    throw new Error(`unexpected URL ${url}`);
+  };
+
+  const items = await collectDailyHot({ DAILYHOT_BASES: 'https://broken.example,https://empty.example' }, 'douyin');
+  if (items.length !== 5) throw new Error(`expected 5 third-fallback Douyin items, got ${items.length}`);
+  if (items[0].title !== '第三抖音热点一') throw new Error('third Douyin fallback returned wrong item');
+  if (items[0].heat !== 10446000) throw new Error(`third Douyin fallback lost heat: ${items[0].heat}`);
+  if (items[1].url !== 'https://www.douyin.com/search/%E7%AC%AC%E4%B8%89%E6%8A%96%E9%9F%B3%E7%83%AD%E7%82%B9%E4%BA%8C') throw new Error(`third Douyin fallback lost mobile URL: ${items[1].url}`);
+  if (!items[2].url.startsWith('https://www.douyin.com/search/')) throw new Error('third Douyin fallback did not synthesize canonical search URL');
+  if (items[0].raw?.trendRadarUpstream !== 'https://api.fanyia.cn/api/douyin/dyhot') {
+    throw new Error('third Douyin fallback provenance missing');
+  }
+  const aa1Index = calls.indexOf('https://v.api.aa1.cn/api/douyin-hot/index.php?aa1=hot');
+  const luochenIndex = calls.indexOf('https://api.luochen.sbs/API/hot_list.php?platform=douyin');
+  const fanyiaIndex = calls.indexOf('https://api.fanyia.cn/api/douyin/dyhot');
+  if (aa1Index < 0 || luochenIndex <= aa1Index || fanyiaIndex <= luochenIndex) {
+    throw new Error('third Douyin fallback ordering is incorrect');
+  }
+}
+
 try {
   await validateGenericFallback();
   await validateDouyinFallback();
   await validateDouyinSecondaryFallback();
-  console.log('DailyHot fallback validated: generic failover plus official-Douyin failure -> AA1 -> independent real hot-list fallback');
+  await validateDouyinThirdFallback();
+  console.log('DailyHot fallback validated: generic failover plus official-Douyin failure -> AA1 -> Luochen -> independent flat real hot-list fallback');
 } finally {
   globalThis.fetch = originalFetch;
 }
