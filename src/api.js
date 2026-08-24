@@ -184,6 +184,8 @@ function publicTopic(topic, rawSignals = [], aiRefreshHours = DEFAULT_AI_REFRESH
     ai_summary: null,
     ai_why_now: null,
     ai_risks: null,
+    ai_opportunities_json: null,
+    ai_updated_at: null,
     opportunities: [],
     ai_verified: false
   };
