@@ -7,6 +7,7 @@ const REQUIRED_DIRECT_CN = String(process.env.REQUIRED_DIRECT_CN || 'v2ex,sspai,
   .split(',')
   .map(value => value.trim())
   .filter(Boolean);
+const SOCIAL_IDS = new Set(['weibo', 'zhihu', 'douyin']);
 
 const dashboard = JSON.parse(await readFile(DASHBOARD, 'utf8'));
 const topics = Array.isArray(dashboard.topics) ? dashboard.topics : [];
@@ -51,6 +52,12 @@ function sourceHealthRow(source) {
 }
 
 const sourceHealth = sources.map(sourceHealthRow);
+for (const row of sourceHealth) {
+  if (!SOCIAL_IDS.has(row.id) || !row.healthy) continue;
+  if (!/^https:\/\//.test(String(row.upstream || ''))) throw new Error(`${row.id}: healthy social health row missing HTTPS upstream`);
+  if (!row.upstreamProvider || row.upstreamProvider === 'unknown') throw new Error(`${row.id}: healthy social health row missing upstreamProvider`);
+  if (!row.upstreamStage || ['unknown', 'failed'].includes(row.upstreamStage)) throw new Error(`${row.id}: healthy social health row missing upstreamStage`);
+}
 const requiredDirect = REQUIRED_DIRECT_CN.map(id => sourceHealth.find(item => item.id === id) || {
   id,
   name: null,
@@ -76,7 +83,7 @@ const aiOpportunities = Array.isArray(dashboard.topics)
   : 0;
 
 const manifest = {
-  schemaVersion: 5,
+  schemaVersion: 4,
   generatedAt: dashboard.generatedAt || null,
   buildSha: dashboard.buildSha || null,
   preview: dashboard.preview,
