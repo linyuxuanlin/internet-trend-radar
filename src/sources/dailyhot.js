@@ -34,6 +34,15 @@ function firstMetric(item, candidates) {
   return { value: null, path: null };
 }
 
+// The shared DailyHot endpoint is an untrusted fallback.  Keep its field
+// allowlist source-specific so a generic `score`, `view`, or ranking field is
+// not silently promoted to heat for a source whose adapter did not document it.
+const SOURCE_HEAT_PATHS = {
+  baidu: new Set(['item.hotScore', 'item.hot_score', 'item.hot', 'item.hotValue', 'item.hot_value', 'item.hotness', 'item.heat']),
+  toutiao: new Set(['item.HotValue', 'item.hot_value', 'item.hotValue', 'item.Heat', 'item.heat', 'item.hot', 'item.hotness']),
+  hupu: new Set(['item.heat', 'item.hot', 'item.hotValue', 'item.hot_value', 'item.hotness'])
+};
+
 function pickMetrics(item, sourceId = '') {
   // Likes are engagement, not a heat/rank metric. The generic upstream does
   // not document whether similarly named fields are aliases or independent
@@ -41,10 +50,14 @@ function pickMetrics(item, sourceId = '') {
   // a maximum or summing potentially duplicated values.
   const declared = item?._trendRadarMetricPaths || {};
   const heatCandidates = [
+    ['item.HotValue', item.HotValue],
     ['item.hot', item.hot],
     ['item.hotValue', item.hotValue],
+    ['item.hotScore', item.hotScore],
+    ['item.hot_score', item.hot_score],
     ['item.hot_value', item.hot_value],
     ['item.hotness', item.hotness],
+    ['item.Heat', item.Heat],
     ['item.heat', item.heat],
     ['item.score', item.score],
     ['item.view', item.view],
@@ -63,9 +76,14 @@ function pickMetrics(item, sourceId = '') {
     ['item.data.like', item.data?.like]
   ];
   const definition = SOURCE_METRICS[sourceId] || {};
-  const allowedHeatCandidates = definition.heat === null ? [] : heatCandidates;
+  const sourceHeatPaths = SOURCE_HEAT_PATHS[sourceId];
+  const allowedHeatCandidates = definition.heat === null
+    ? []
+    : sourceHeatPaths ? heatCandidates.filter(([path]) => sourceHeatPaths.has(path)) : heatCandidates;
   const allowedEngagementCandidates = definition.engagement === null ? [] : engagementCandidates;
-  if (declared.heat && definition.heat !== null) allowedHeatCandidates.unshift([declared.heat, item.hot]);
+  if (declared.heat && definition.heat !== null && (!sourceHeatPaths || sourceHeatPaths.has(declared.heat))) {
+    allowedHeatCandidates.unshift([declared.heat, item.hot]);
+  }
   if (declared.engagement && definition.engagement !== null) allowedEngagementCandidates.unshift([declared.engagement, item.engagement]);
   const heat = firstMetric(item, allowedHeatCandidates);
   const engagement = firstMetric(item, allowedEngagementCandidates);
