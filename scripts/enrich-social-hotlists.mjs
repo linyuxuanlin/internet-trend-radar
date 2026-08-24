@@ -35,9 +35,16 @@ export function describeSocialUpstream(sourceId, upstream) {
 }
 
 function makeTopic(item, total) {
-  const score = scoreItem(item.rank, total, item.heat, item.engagement);
+  const score = scoreItem(item.rank, total, 0, 0);
   const breakout = clamp(score * (item.rank <= 5 ? 0.95 : item.rank <= 10 ? 0.82 : 0.64));
   const id = item.fingerprint || fingerprintTitle(item.title);
+  const upstream = item.raw?.trendRadarUpstream || null;
+  const provenance = describeSocialUpstream(item.sourceId, upstream);
+  const sourceKind = provenance.stage === 'official-direct'
+    ? 'official-api'
+    : provenance.stage.startsWith('mirror-fallback')
+      ? 'mirror-fallback'
+      : 'aggregator-fallback';
   return {
     id,
     fingerprint: id,
@@ -62,7 +69,24 @@ function makeTopic(item, total) {
       rank: item.rank,
       captured_at: item.capturedAt,
       published_at: item.publishedAt || null,
-      upstream: item.raw?.trendRadarUpstream || null
+      upstream
+    }],
+    raw_signals: [{
+      source_id: item.sourceId,
+      source_kind: sourceKind,
+      raw_heat_max: item.heat === null || item.heat === undefined ? null : Number(item.heat),
+      raw_engagement_max: item.engagement === null || item.engagement === undefined ? null : Number(item.engagement),
+      raw_heat_latest: item.heat === null || item.heat === undefined ? null : Number(item.heat),
+      raw_engagement_latest: item.engagement === null || item.engagement === undefined ? null : Number(item.engagement),
+      best_rank: item.rank,
+      observations: 1,
+      latest_captured_at: item.capturedAt,
+      upstream,
+      metric_paths: item.raw?.trendRadarMetrics ? {
+        heat: item.raw.trendRadarMetrics.heat_path || null,
+        engagement: item.raw.trendRadarMetrics.engagement_path || null
+      } : { heat: null, engagement: null },
+      units: 'source-native; not comparable across platforms'
     }]
   };
 }

@@ -1,0 +1,1953 @@
+{
+  "generatedAt": "2026-08-24T18:01:11.793Z",
+  "ready": true,
+  "preview": false,
+  "mode": "static-real-snapshot",
+  "coverage": {
+    "active_sources": 6,
+    "active_cn_sources": 0,
+    "active_global_sources": 2,
+    "healthy_active_sources": 2,
+    "degraded_active_sources": 4
+  },
+  "data_contract": {
+    "raw_fields": [
+      "rank",
+      "heat",
+      "engagement",
+      "captured_at",
+      "upstream"
+    ],
+    "raw_field_semantics": "heat and engagement are source-native values; null means the source did not provide that metric",
+    "derived_fields": [
+      "trend_score",
+      "current_score",
+      "breakout_score"
+    ],
+    "derived_score_method": "rank-only (static snapshot; source percentile history unavailable)",
+    "provenance_requirement": "every persisted raw item must include an upstream identifier"
+  },
+  "topics": [
+    {
+      "id": "t_1m6y9su",
+      "fingerprint": "t_1m6y9su",
+      "canonical_title": "Xiaomi: New CPU matches Apple cores single threaded, much faster multithreaded",
+      "category": "综合",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 72,
+      "breakout_score": 66.2,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "rising",
+      "trend_score": 72,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "hackernews",
+          "metric_definition": {
+            "heat": "item.score",
+            "engagement": "item.descendants",
+            "note": "official Firebase item API"
+          },
+          "raw_heat_max": 383,
+          "raw_engagement_max": 220,
+          "best_rank": 1,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://hacker-news.firebaseio.com/v0/item/49420873.json",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Hacker News · tosh",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "hackernews",
+          "external_id": "hackernews:1:t_1m6y9su",
+          "url": "https://twitter.com/lemire/status/2091894299289874926",
+          "title": "Xiaomi: New CPU matches Apple cores single threaded, much faster multithreaded",
+          "rank": 1,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_18pm81f",
+      "fingerprint": "t_18pm81f",
+      "canonical_title": "s1dashu/ip-as-logo-skill",
+      "category": "科技",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 72,
+      "breakout_score": 66.2,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "rising",
+      "trend_score": 72,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "github",
+          "metric_definition": {
+            "heat": "repository.stargazers_count",
+            "engagement": "repository.forks_count",
+            "note": "official GitHub Search API"
+          },
+          "raw_heat_max": 4091,
+          "raw_engagement_max": 197,
+          "best_rank": 1,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://api.github.com/search/repositories",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "A compact Agent Skill for highly simplified, rounded, subtly neo-skeuomorphic IP mascot logos.",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "github",
+          "external_id": "github:1:t_18pm81f",
+          "url": "https://github.com/s1dashu/ip-as-logo-skill",
+          "title": "s1dashu/ip-as-logo-skill",
+          "rank": 1,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_rp0wvf",
+      "fingerprint": "t_rp0wvf",
+      "canonical_title": "MengTo/threeui",
+      "category": "科技",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 69.3,
+      "breakout_score": 63.8,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "rising",
+      "trend_score": 69.3,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "github",
+          "metric_definition": {
+            "heat": "repository.stargazers_count",
+            "engagement": "repository.forks_count",
+            "note": "official GitHub Search API"
+          },
+          "raw_heat_max": 3383,
+          "raw_engagement_max": 329,
+          "best_rank": 2,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://api.github.com/search/repositories",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Open-source ThreeUI Community catalog with live interactive components and complete Community source.",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "github",
+          "external_id": "github:2:t_rp0wvf",
+          "url": "https://github.com/MengTo/threeui",
+          "title": "MengTo/threeui",
+          "rank": 2,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_1r62haa",
+      "fingerprint": "t_1r62haa",
+      "canonical_title": "MS Paint and Photos inivisibly watermark even locally generated output with GUID",
+      "category": "AI",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 69,
+      "breakout_score": 63.5,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "rising",
+      "trend_score": 69,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "hackernews",
+          "metric_definition": {
+            "heat": "item.score",
+            "engagement": "item.descendants",
+            "note": "official Firebase item API"
+          },
+          "raw_heat_max": 214,
+          "raw_engagement_max": 93,
+          "best_rank": 2,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://hacker-news.firebaseio.com/v0/item/49421158.json",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Hacker News · ComputerGuru",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "hackernews",
+          "external_id": "hackernews:2:t_1r62haa",
+          "url": "https://xusheng.dev/posts/reversing/mspaint_invisible_watermark/main/",
+          "title": "MS Paint and Photos inivisibly watermark even locally generated output with GUID",
+          "rank": 2,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_funeic",
+      "fingerprint": "t_funeic",
+      "canonical_title": "yetone/cumora",
+      "category": "科技",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 66.7,
+      "breakout_score": 61.4,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "rising",
+      "trend_score": 66.7,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "github",
+          "metric_definition": {
+            "heat": "repository.stargazers_count",
+            "engagement": "repository.forks_count",
+            "note": "official GitHub Search API"
+          },
+          "raw_heat_max": 3028,
+          "raw_engagement_max": 362,
+          "best_rank": 3,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://api.github.com/search/repositories",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Where agent teams gather. Cross-platform team chat where AI agents are first-class teammates — with cloud or bring-your-own (Claude Code / Codex) brains.",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "github",
+          "external_id": "github:3:t_funeic",
+          "url": "https://github.com/yetone/cumora",
+          "title": "yetone/cumora",
+          "rank": 3,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_siy5zi",
+      "fingerprint": "t_siy5zi",
+      "canonical_title": "IPFS Maintainers Winding Down",
+      "category": "AI",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 66.1,
+      "breakout_score": 60.8,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "rising",
+      "trend_score": 66.1,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "hackernews",
+          "metric_definition": {
+            "heat": "item.score",
+            "engagement": "item.descendants",
+            "note": "official Firebase item API"
+          },
+          "raw_heat_max": 143,
+          "raw_engagement_max": 56,
+          "best_rank": 3,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://hacker-news.firebaseio.com/v0/item/49421489.json",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Hacker News · iand",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "hackernews",
+          "external_id": "hackernews:3:t_siy5zi",
+          "url": "https://ipshipyard.com/blog/2026-the-end-of-ipfs-at-shipyard/",
+          "title": "IPFS Maintainers Winding Down",
+          "rank": 3,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_imnbcg",
+      "fingerprint": "t_imnbcg",
+      "canonical_title": "CopilotKit/OpenBot",
+      "category": "科技",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 64,
+      "breakout_score": 58.9,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "active",
+      "trend_score": 64,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "github",
+          "metric_definition": {
+            "heat": "repository.stargazers_count",
+            "engagement": "repository.forks_count",
+            "note": "official GitHub Search API"
+          },
+          "raw_heat_max": 2609,
+          "raw_engagement_max": 304,
+          "best_rank": 4,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://api.github.com/search/repositories",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Open-source AI coworkers that each get a computer of their own: a browser, files and tools, with every action decided before it happens and recorded after. Bring any AG-UI agent.",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "github",
+          "external_id": "github:4:t_imnbcg",
+          "url": "https://github.com/CopilotKit/OpenBot",
+          "title": "CopilotKit/OpenBot",
+          "rank": 4,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_45djv5",
+      "fingerprint": "t_45djv5",
+      "canonical_title": "Where Did All the Public Bathrooms Go?",
+      "category": "综合",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 63.1,
+      "breakout_score": 58.1,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "active",
+      "trend_score": 63.1,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "hackernews",
+          "metric_definition": {
+            "heat": "item.score",
+            "engagement": "item.descendants",
+            "note": "official Firebase item API"
+          },
+          "raw_heat_max": 33,
+          "raw_engagement_max": 22,
+          "best_rank": 4,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://hacker-news.firebaseio.com/v0/item/49422800.json",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Hacker News · herbertl",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "hackernews",
+          "external_id": "hackernews:4:t_45djv5",
+          "url": "https://daily.jstor.org/where-did-all-the-public-bathrooms-go/",
+          "title": "Where Did All the Public Bathrooms Go?",
+          "rank": 4,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_cvaohc",
+      "fingerprint": "t_cvaohc",
+      "canonical_title": "wang2122/sprix-sage-router",
+      "category": "科技",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 61.4,
+      "breakout_score": 56.5,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "active",
+      "trend_score": 61.4,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "github",
+          "metric_definition": {
+            "heat": "repository.stargazers_count",
+            "engagement": "repository.forks_count",
+            "note": "official GitHub Search API"
+          },
+          "raw_heat_max": 1755,
+          "raw_engagement_max": 23,
+          "best_rank": 5,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://api.github.com/search/repositories",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Sprix AI at 屿智同行 — state-aware SELF/COLLABORATE/HANDOFF routing for A2A agent networks.",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "github",
+          "external_id": "github:5:t_cvaohc",
+          "url": "https://github.com/wang2122/sprix-sage-router",
+          "title": "wang2122/sprix-sage-router",
+          "rank": 5,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_1u7kq6j",
+      "fingerprint": "t_1u7kq6j",
+      "canonical_title": "The entire city of San Francisco as a video game",
+      "category": "综合",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 60.1,
+      "breakout_score": 55.3,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "active",
+      "trend_score": 60.1,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "hackernews",
+          "metric_definition": {
+            "heat": "item.score",
+            "engagement": "item.descendants",
+            "note": "official Firebase item API"
+          },
+          "raw_heat_max": 46,
+          "raw_engagement_max": 12,
+          "best_rank": 5,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://hacker-news.firebaseio.com/v0/item/49422784.json",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Hacker News · centrosphere",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "hackernews",
+          "external_id": "hackernews:5:t_1u7kq6j",
+          "url": "https://sf.thijs.gg/",
+          "title": "The entire city of San Francisco as a video game",
+          "rank": 5,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_18tlawy",
+      "fingerprint": "t_18tlawy",
+      "canonical_title": "b-nnett/grok-bot-0.18-reconstructed",
+      "category": "科技",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 58.7,
+      "breakout_score": 44.6,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "active",
+      "trend_score": 58.7,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "github",
+          "metric_definition": {
+            "heat": "repository.stargazers_count",
+            "engagement": "repository.forks_count",
+            "note": "official GitHub Search API"
+          },
+          "raw_heat_max": 1412,
+          "raw_engagement_max": 1560,
+          "best_rank": 6,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://api.github.com/search/repositories",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Unofficial source-oriented reconstruction and extension of Grok Bot 0.18.0 for macOS",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "github",
+          "external_id": "github:6:t_18tlawy",
+          "url": "https://github.com/b-nnett/grok-bot-0.18-reconstructed",
+          "title": "b-nnett/grok-bot-0.18-reconstructed",
+          "rank": 6,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_1cdbcf6",
+      "fingerprint": "t_1cdbcf6",
+      "canonical_title": "Autostep (YC P26) Is Hiring AI/Fullstack Engineers and a Chief of Staff",
+      "category": "AI",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 57.2,
+      "breakout_score": 43.5,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "active",
+      "trend_score": 57.2,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "hackernews",
+          "metric_definition": {
+            "heat": "item.score",
+            "engagement": "item.descendants",
+            "note": "official Firebase item API"
+          },
+          "raw_heat_max": 1,
+          "raw_engagement_max": null,
+          "best_rank": 6,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://hacker-news.firebaseio.com/v0/item/49423495.json",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Hacker News · adawg4",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "hackernews",
+          "external_id": "hackernews:6:t_1cdbcf6",
+          "url": "https://www.ycombinator.com/companies/autostep/jobs",
+          "title": "Autostep (YC P26) Is Hiring AI/Fullstack Engineers and a Chief of Staff",
+          "rank": 6,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_ys1z3q",
+      "fingerprint": "t_ys1z3q",
+      "canonical_title": "vvxw/deploy-vercel",
+      "category": "科技",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 56.1,
+      "breakout_score": 42.6,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "active",
+      "trend_score": 56.1,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "github",
+          "metric_definition": {
+            "heat": "repository.stargazers_count",
+            "engagement": "repository.forks_count",
+            "note": "official GitHub Search API"
+          },
+          "raw_heat_max": 1294,
+          "raw_engagement_max": 265,
+          "best_rank": 7,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://api.github.com/search/repositories",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Install Command：npm install",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "github",
+          "external_id": "github:7:t_ys1z3q",
+          "url": "https://github.com/vvxw/deploy-vercel",
+          "title": "vvxw/deploy-vercel",
+          "rank": 7,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_9fgksl",
+      "fingerprint": "t_9fgksl",
+      "canonical_title": "How Europe is killing makers and micro-entrepreneurs",
+      "category": "综合",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 54.2,
+      "breakout_score": 41.2,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 54.2,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "hackernews",
+          "metric_definition": {
+            "heat": "item.score",
+            "engagement": "item.descendants",
+            "note": "official Firebase item API"
+          },
+          "raw_heat_max": 698,
+          "raw_engagement_max": 469,
+          "best_rank": 7,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://hacker-news.firebaseio.com/v0/item/49419237.json",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Hacker News · l-one-lone",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "hackernews",
+          "external_id": "hackernews:7:t_9fgksl",
+          "url": "https://lectronz.com/u/lectronz/articles/how-europe-is-killing-makers-and-micro-entrepreneurs",
+          "title": "How Europe is killing makers and micro-entrepreneurs",
+          "rank": 7,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_l25pr0",
+      "fingerprint": "t_l25pr0",
+      "canonical_title": "cinderline/northcinder",
+      "category": "科技",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 53.4,
+      "breakout_score": 40.6,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 53.4,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "github",
+          "metric_definition": {
+            "heat": "repository.stargazers_count",
+            "engagement": "repository.forks_count",
+            "note": "official GitHub Search API"
+          },
+          "raw_heat_max": 1210,
+          "raw_engagement_max": 6,
+          "best_rank": 8,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://api.github.com/search/repositories",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Open-source MCP server for comparing products and asking the buyer before purchase.",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "github",
+          "external_id": "github:8:t_l25pr0",
+          "url": "https://github.com/cinderline/northcinder",
+          "title": "cinderline/northcinder",
+          "rank": 8,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_1av1hk9",
+      "fingerprint": "t_1av1hk9",
+      "canonical_title": "OpenAI: GPT 5.6 Sol price reduction (until at least Nov 21)",
+      "category": "AI",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 51.2,
+      "breakout_score": 38.9,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 51.2,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "hackernews",
+          "metric_definition": {
+            "heat": "item.score",
+            "engagement": "item.descendants",
+            "note": "official Firebase item API"
+          },
+          "raw_heat_max": 160,
+          "raw_engagement_max": 146,
+          "best_rank": 8,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://hacker-news.firebaseio.com/v0/item/49421074.json",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Hacker News · tosh",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "hackernews",
+          "external_id": "hackernews:8:t_1av1hk9",
+          "url": "https://developers.openai.com/api/docs/pricing",
+          "title": "OpenAI: GPT 5.6 Sol price reduction (until at least Nov 21)",
+          "rank": 8,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_uy0loh",
+      "fingerprint": "t_uy0loh",
+      "canonical_title": "duty1g/x64dbg-mcp-server",
+      "category": "科技",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 50.8,
+      "breakout_score": 38.6,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 50.8,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "github",
+          "metric_definition": {
+            "heat": "repository.stargazers_count",
+            "engagement": "repository.forks_count",
+            "note": "official GitHub Search API"
+          },
+          "raw_heat_max": 1168,
+          "raw_engagement_max": 115,
+          "best_rank": 9,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://api.github.com/search/repositories",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "x64dbg-MCP Server is a native MCP (Model Context Protocol) plugin for x64dbg that exposes the debugger's full functionality over HTTP. Connect any MCP-compatible AI assistant and c",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "github",
+          "external_id": "github:9:t_uy0loh",
+          "url": "https://github.com/duty1g/x64dbg-mcp-server",
+          "title": "duty1g/x64dbg-mcp-server",
+          "rank": 9,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_cijzhk",
+      "fingerprint": "t_cijzhk",
+      "canonical_title": "Jabber/XMPP: 25 Years of Digital Independence",
+      "category": "综合",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 48.3,
+      "breakout_score": 36.7,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 48.3,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "hackernews",
+          "metric_definition": {
+            "heat": "item.score",
+            "engagement": "item.descendants",
+            "note": "official Firebase item API"
+          },
+          "raw_heat_max": 42,
+          "raw_engagement_max": 18,
+          "best_rank": 9,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://hacker-news.firebaseio.com/v0/item/49421536.json",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Hacker News · inputmice",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "hackernews",
+          "external_id": "hackernews:9:t_cijzhk",
+          "url": "https://gultsch.de/posts/25-years-of-digital-independence/",
+          "title": "Jabber/XMPP: 25 Years of Digital Independence",
+          "rank": 9,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_1d4dr73",
+      "fingerprint": "t_1d4dr73",
+      "canonical_title": "tobi/walgit",
+      "category": "科技",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 48.1,
+      "breakout_score": 36.6,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 48.1,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "github",
+          "metric_definition": {
+            "heat": "repository.stargazers_count",
+            "engagement": "repository.forks_count",
+            "note": "official GitHub Search API"
+          },
+          "raw_heat_max": 910,
+          "raw_engagement_max": 46,
+          "best_rank": 10,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://api.github.com/search/repositories",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": null,
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "github",
+          "external_id": "github:10:t_1d4dr73",
+          "url": "https://github.com/tobi/walgit",
+          "title": "tobi/walgit",
+          "rank": 10,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_yzwd67",
+      "fingerprint": "t_yzwd67",
+      "canonical_title": "MeteorNOX/DeepSeek-Balance-Whale-Widget",
+      "category": "科技",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 45.5,
+      "breakout_score": 26.4,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 45.5,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "github",
+          "metric_definition": {
+            "heat": "repository.stargazers_count",
+            "engagement": "repository.forks_count",
+            "note": "official GitHub Search API"
+          },
+          "raw_heat_max": 854,
+          "raw_engagement_max": 37,
+          "best_rank": 11,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://api.github.com/search/repositories",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "DeepSeek Harness（DSH）一只住在 DSH 界面右下角的小鲸鱼娘，帮你盯着DeepSeek账户余额。QQ弹弹，支持拖拽吸附、左吸附翻转、数字滚动动画，随界面自动启用，建议直接喊来你的dsh安装",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "github",
+          "external_id": "github:11:t_yzwd67",
+          "url": "https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget",
+          "title": "MeteorNOX/DeepSeek-Balance-Whale-Widget",
+          "rank": 11,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_10c7ms5",
+      "fingerprint": "t_10c7ms5",
+      "canonical_title": "Hot Chips 2026: CUDA Targets RISC-V – By Chester Lam",
+      "category": "综合",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 45.3,
+      "breakout_score": 34.4,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 45.3,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "hackernews",
+          "metric_definition": {
+            "heat": "item.score",
+            "engagement": "item.descendants",
+            "note": "official Firebase item API"
+          },
+          "raw_heat_max": 22,
+          "raw_engagement_max": 3,
+          "best_rank": 10,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://hacker-news.firebaseio.com/v0/item/49422548.json",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Hacker News · rbanffy",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "hackernews",
+          "external_id": "hackernews:10:t_10c7ms5",
+          "url": "https://chipsandcheese.com/p/hot-chips-2026-cuda-targets-risc",
+          "title": "Hot Chips 2026: CUDA Targets RISC-V – By Chester Lam",
+          "rank": 10,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_1denhjj",
+      "fingerprint": "t_1denhjj",
+      "canonical_title": "cclank/lanshu-create-ai-presenter-video",
+      "category": "AI",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 42.8,
+      "breakout_score": 24.8,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 42.8,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "github",
+          "metric_definition": {
+            "heat": "repository.stargazers_count",
+            "engagement": "repository.forks_count",
+            "note": "official GitHub Search API"
+          },
+          "raw_heat_max": 828,
+          "raw_engagement_max": 140,
+          "best_rank": 12,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://api.github.com/search/repositories",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Provider-neutral Codex Skill for producing verified AI presenter videos from a script and an authorized presenter image.",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "github",
+          "external_id": "github:12:t_1denhjj",
+          "url": "https://github.com/cclank/lanshu-create-ai-presenter-video",
+          "title": "cclank/lanshu-create-ai-presenter-video",
+          "rank": 12,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_1d3bj9f",
+      "fingerprint": "t_1d3bj9f",
+      "canonical_title": "Show HN: GlassBox – what the browser reveals, and how identifiable you are",
+      "category": "综合",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 42.4,
+      "breakout_score": 24.6,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 42.4,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "hackernews",
+          "metric_definition": {
+            "heat": "item.score",
+            "engagement": "item.descendants",
+            "note": "official Firebase item API"
+          },
+          "raw_heat_max": 31,
+          "raw_engagement_max": 10,
+          "best_rank": 11,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://hacker-news.firebaseio.com/v0/item/49421948.json",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Hacker News · tke248",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "hackernews",
+          "external_id": "hackernews:11:t_1d3bj9f",
+          "url": "https://glassbox.codecanary.org",
+          "title": "Show HN: GlassBox – what the browser reveals, and how identifiable you are",
+          "rank": 11,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_hlk3hg",
+      "fingerprint": "t_hlk3hg",
+      "canonical_title": "Spielewoy/autoprompt-skill",
+      "category": "科技",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 40.2,
+      "breakout_score": 23.3,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 40.2,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "github",
+          "metric_definition": {
+            "heat": "repository.stargazers_count",
+            "engagement": "repository.forks_count",
+            "note": "official GitHub Search API"
+          },
+          "raw_heat_max": 811,
+          "raw_engagement_max": 54,
+          "best_rank": 13,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://api.github.com/search/repositories",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Autoprompt is a coding-agent skill that cuts failures by 45% on agentic coding tasks.",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "github",
+          "external_id": "github:13:t_hlk3hg",
+          "url": "https://github.com/Spielewoy/autoprompt-skill",
+          "title": "Spielewoy/autoprompt-skill",
+          "rank": 13,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_1jju95p",
+      "fingerprint": "t_1jju95p",
+      "canonical_title": "SeL4 security proofs now complete on AArch64",
+      "category": "综合",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 39.4,
+      "breakout_score": 22.8,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 39.4,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "hackernews",
+          "metric_definition": {
+            "heat": "item.score",
+            "engagement": "item.descendants",
+            "note": "official Firebase item API"
+          },
+          "raw_heat_max": 141,
+          "raw_engagement_max": 31,
+          "best_rank": 12,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://hacker-news.firebaseio.com/v0/item/49418255.json",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Hacker News · snvzz",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "hackernews",
+          "external_id": "hackernews:12:t_1jju95p",
+          "url": "https://proofcraft.systems/news-2026/#2026-08-21",
+          "title": "SeL4 security proofs now complete on AArch64",
+          "rank": 12,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_g55jc5",
+      "fingerprint": "t_g55jc5",
+      "canonical_title": "ShadowAqueduct/watermark-remover",
+      "category": "科技",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 37.5,
+      "breakout_score": 21.8,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 37.5,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "github",
+          "metric_definition": {
+            "heat": "repository.stargazers_count",
+            "engagement": "repository.forks_count",
+            "note": "official GitHub Search API"
+          },
+          "raw_heat_max": 766,
+          "raw_engagement_max": 73,
+          "best_rank": 14,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://api.github.com/search/repositories",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Purge multi-vendor AI watermarks: clean Unicode text, apply statistical rewrite hooks, and clear C2PA plus metadata from PNG, JPEG, SVG, PDF, DOCX, HTML, and MD.",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "github",
+          "external_id": "github:14:t_g55jc5",
+          "url": "https://github.com/ShadowAqueduct/watermark-remover",
+          "title": "ShadowAqueduct/watermark-remover",
+          "rank": 14,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_myyuf4",
+      "fingerprint": "t_myyuf4",
+      "canonical_title": "Public services are increasingly strained by LLM-written appeals for benefits",
+      "category": "AI",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 36.4,
+      "breakout_score": 21.1,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 36.4,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "hackernews",
+          "metric_definition": {
+            "heat": "item.score",
+            "engagement": "item.descendants",
+            "note": "official Firebase item API"
+          },
+          "raw_heat_max": 41,
+          "raw_engagement_max": 46,
+          "best_rank": 13,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://hacker-news.firebaseio.com/v0/item/49422227.json",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Hacker News · lensecat",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "hackernews",
+          "external_id": "hackernews:13:t_myyuf4",
+          "url": "https://arxiv.org/abs/2608.16603",
+          "title": "Public services are increasingly strained by LLM-written appeals for benefits",
+          "rank": 13,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_t5y3m5",
+      "fingerprint": "t_t5y3m5",
+      "canonical_title": "browser-use/macos-harness",
+      "category": "科技",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 34.9,
+      "breakout_score": 20.2,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 34.9,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "github",
+          "metric_definition": {
+            "heat": "repository.stargazers_count",
+            "engagement": "repository.forks_count",
+            "note": "official GitHub Search API"
+          },
+          "raw_heat_max": 750,
+          "raw_engagement_max": 51,
+          "best_rank": 15,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://api.github.com/search/repositories",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "The simplest, thinnest harness that gives an LLM complete freedom to control a Mac.",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "github",
+          "external_id": "github:15:t_t5y3m5",
+          "url": "https://github.com/browser-use/macos-harness",
+          "title": "browser-use/macos-harness",
+          "rank": 15,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_igwfkb",
+      "fingerprint": "t_igwfkb",
+      "canonical_title": "I were 17, I'd learn how to build LLMs from scratch",
+      "category": "AI",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 33.5,
+      "breakout_score": 19.4,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 33.5,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "hackernews",
+          "metric_definition": {
+            "heat": "item.score",
+            "engagement": "item.descendants",
+            "note": "official Firebase item API"
+          },
+          "raw_heat_max": 410,
+          "raw_engagement_max": 529,
+          "best_rank": 14,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://hacker-news.firebaseio.com/v0/item/49412396.json",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Hacker News · bilsbie",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "hackernews",
+          "external_id": "hackernews:14:t_igwfkb",
+          "url": "https://twitter.com/paulg/status/2091544343589060625",
+          "title": "I were 17, I'd learn how to build LLMs from scratch",
+          "rank": 14,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_d5gsn2",
+      "fingerprint": "t_d5gsn2",
+      "canonical_title": "DenisSergeevitch/desktop-fly",
+      "category": "科技",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 32.2,
+      "breakout_score": 18.7,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 32.2,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "github",
+          "metric_definition": {
+            "heat": "repository.stargazers_count",
+            "engagement": "repository.forks_count",
+            "note": "official GitHub Search API"
+          },
+          "raw_heat_max": 715,
+          "raw_engagement_max": 43,
+          "best_rank": 16,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://api.github.com/search/repositories",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "A 3D fruit fly living on your macOS desktop, driven by a live spiking simulation of the real FlyWire connectome",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "github",
+          "external_id": "github:16:t_d5gsn2",
+          "url": "https://github.com/DenisSergeevitch/desktop-fly",
+          "title": "DenisSergeevitch/desktop-fly",
+          "rank": 16,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_11megip",
+      "fingerprint": "t_11megip",
+      "canonical_title": "Show HN: PicoMQ – Durable Streams over HTTP, on object storage",
+      "category": "综合",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 30.5,
+      "breakout_score": 17.7,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 30.5,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "hackernews",
+          "metric_definition": {
+            "heat": "item.score",
+            "engagement": "item.descendants",
+            "note": "official Firebase item API"
+          },
+          "raw_heat_max": 23,
+          "raw_engagement_max": 0,
+          "best_rank": 15,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://hacker-news.firebaseio.com/v0/item/49421806.json",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Hacker News · adesh_nalpet",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "hackernews",
+          "external_id": "hackernews:15:t_11megip",
+          "url": "https://picomq.com/",
+          "title": "Show HN: PicoMQ – Durable Streams over HTTP, on object storage",
+          "rank": 15,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_1a6cusr",
+      "fingerprint": "t_1a6cusr",
+      "canonical_title": "SigmanticAI/apex-inference-chip",
+      "category": "AI",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 29.6,
+      "breakout_score": 17.1,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 29.6,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "github",
+          "metric_definition": {
+            "heat": "repository.stargazers_count",
+            "engagement": "repository.forks_count",
+            "note": "official GitHub Search API"
+          },
+          "raw_heat_max": 685,
+          "raw_engagement_max": 1,
+          "best_rank": 17,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://api.github.com/search/repositories",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "An inference chip design that runs a real LLM (Qwen2.5-0.5B) on FPGA — one transformer decoder layer in RTL, every silicon value bit-exact against a golden model. 0.56 tok/s measur",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "github",
+          "external_id": "github:17:t_1a6cusr",
+          "url": "https://github.com/SigmanticAI/apex-inference-chip",
+          "title": "SigmanticAI/apex-inference-chip",
+          "rank": 17,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_1o45sqt",
+      "fingerprint": "t_1o45sqt",
+      "canonical_title": "Coding expertise is going to collapse from AI reliance",
+      "category": "AI",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 27.5,
+      "breakout_score": 16,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 27.5,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "hackernews",
+          "metric_definition": {
+            "heat": "item.score",
+            "engagement": "item.descendants",
+            "note": "official Firebase item API"
+          },
+          "raw_heat_max": 205,
+          "raw_engagement_max": 236,
+          "best_rank": 16,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://hacker-news.firebaseio.com/v0/item/49421554.json",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Hacker News · larsfaye",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "hackernews",
+          "external_id": "hackernews:16:t_1o45sqt",
+          "url": "https://larsfaye.com/articles/ai-coding-will-prevent-expertise",
+          "title": "Coding expertise is going to collapse from AI reliance",
+          "rank": 16,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_nqbw8q",
+      "fingerprint": "t_nqbw8q",
+      "canonical_title": "amirh00sain/SpiderPanel",
+      "category": "AI",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 26.9,
+      "breakout_score": 15.6,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 26.9,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "github",
+          "metric_definition": {
+            "heat": "repository.stargazers_count",
+            "engagement": "repository.forks_count",
+            "note": "official GitHub Search API"
+          },
+          "raw_heat_max": 662,
+          "raw_engagement_max": 2125,
+          "best_rank": 18,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://api.github.com/search/repositories",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": null,
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "github",
+          "external_id": "github:18:t_nqbw8q",
+          "url": "https://github.com/amirh00sain/SpiderPanel",
+          "title": "amirh00sain/SpiderPanel",
+          "rank": 18,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_1ymzx3",
+      "fingerprint": "t_1ymzx3",
+      "canonical_title": "A Blackstone real estate company exposed SSN digits, DOBs, addresses and more",
+      "category": "综合",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 24.6,
+      "breakout_score": 14.2,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 24.6,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "hackernews",
+          "metric_definition": {
+            "heat": "item.score",
+            "engagement": "item.descendants",
+            "note": "official Firebase item API"
+          },
+          "raw_heat_max": 62,
+          "raw_engagement_max": 18,
+          "best_rank": 17,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://hacker-news.firebaseio.com/v0/item/49422204.json",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Hacker News · bearsyankees",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "hackernews",
+          "external_id": "hackernews:17:t_1ymzx3",
+          "url": "https://alexschapiro.com/security/vulnerability/2026/07/16/beam-living-graphql-data-exposure",
+          "title": "A Blackstone real estate company exposed SSN digits, DOBs, addresses and more",
+          "rank": 17,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_147e4f",
+      "fingerprint": "t_147e4f",
+      "canonical_title": "missuo/herdrm",
+      "category": "科技",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 24.3,
+      "breakout_score": 14.1,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 24.3,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "github",
+          "metric_definition": {
+            "heat": "repository.stargazers_count",
+            "engagement": "repository.forks_count",
+            "note": "official GitHub Search API"
+          },
+          "raw_heat_max": 619,
+          "raw_engagement_max": 38,
+          "best_rank": 19,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://api.github.com/search/repositories",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Native macOS console for herdr — all your coding agents and their live terminals, across devices",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "github",
+          "external_id": "github:19:t_147e4f",
+          "url": "https://github.com/missuo/herdrm",
+          "title": "missuo/herdrm",
+          "rank": 19,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_hh30vd",
+      "fingerprint": "t_hh30vd",
+      "canonical_title": "Man Dressed as Darth Vader Defends Flock Cameras to San Diego City Council",
+      "category": "综合",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 21.6,
+      "breakout_score": 12.5,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 21.6,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "hackernews",
+          "metric_definition": {
+            "heat": "item.score",
+            "engagement": "item.descendants",
+            "note": "official Firebase item API"
+          },
+          "raw_heat_max": 56,
+          "raw_engagement_max": 9,
+          "best_rank": 18,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://hacker-news.firebaseio.com/v0/item/49422404.json",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Hacker News · mooreds",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "hackernews",
+          "external_id": "hackernews:18:t_hh30vd",
+          "url": "https://thehill.com/policy/technology/6042349-darth-vader-flock-surveillance/",
+          "title": "Man Dressed as Darth Vader Defends Flock Cameras to San Diego City Council",
+          "rank": 18,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    },
+    {
+      "id": "t_qqsh1w",
+      "fingerprint": "t_qqsh1w",
+      "canonical_title": "nateherkai/scroll-craft",
+      "category": "AI",
+      "language": "en",
+      "first_seen_at": "2026-08-24T18:01:11.793Z",
+      "last_seen_at": "2026-08-24T18:01:11.793Z",
+      "current_score": 21.6,
+      "breakout_score": 12.5,
+      "source_count": 1,
+      "mention_count": 1,
+      "status": "new",
+      "trend_score": 21.6,
+      "score_semantics": "derived trend index; not an upstream platform heat value",
+      "score_method": "rank-only (static snapshot; source percentile history unavailable)",
+      "raw_signals": [
+        {
+          "source_id": "github",
+          "metric_definition": {
+            "heat": "repository.stargazers_count",
+            "engagement": "repository.forks_count",
+            "note": "official GitHub Search API"
+          },
+          "raw_heat_max": 600,
+          "raw_engagement_max": 112,
+          "best_rank": 20,
+          "observations": 1,
+          "latest_captured_at": "2026-08-24T18:01:11.793Z",
+          "upstream": "https://api.github.com/search/repositories",
+          "units": "source-native; not comparable across platforms"
+        }
+      ],
+      "source_summary": "Claude Code skill for premium scroll-driven websites. Scroll becomes the timeline, on a real design floor, verified by screenshotting its own scroll.",
+      "ai_summary": null,
+      "ai_why_now": null,
+      "opportunities": [],
+      "sources": [
+        {
+          "source_id": "github",
+          "external_id": "github:20:t_qqsh1w",
+          "url": "https://github.com/nateherkai/scroll-craft",
+          "title": "nateherkai/scroll-craft",
+          "rank": 20,
+          "captured_at": "2026-08-24T18:01:11.793Z"
+        }
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "id": "weibo",
+      "name": "微博",
+      "region": "cn",
+      "kind": "aggregator",
+      "last_success_at": null,
+      "last_error_at": "2026-08-24T18:01:11.793Z",
+      "last_error": "DailyHot collection skipped after repeated shared-upstream DNS failures; awaiting one shared live diagnostic probe.",
+      "last_item_count": 0,
+      "latest_upstream": null,
+      "latest_upstream_captured_at": null
+    },
+    {
+      "id": "zhihu",
+      "name": "知乎",
+      "region": "cn",
+      "kind": "aggregator",
+      "last_success_at": null,
+      "last_error_at": "2026-08-24T18:01:11.793Z",
+      "last_error": "DailyHot collection skipped after repeated shared-upstream DNS failures; awaiting one shared live diagnostic probe.",
+      "last_item_count": 0,
+      "latest_upstream": null,
+      "latest_upstream_captured_at": null
+    },
+    {
+      "id": "douyin",
+      "name": "抖音",
+      "region": "cn",
+      "kind": "aggregator",
+      "last_success_at": null,
+      "last_error_at": "2026-08-24T18:01:11.793Z",
+      "last_error": "DailyHot collection skipped after repeated shared-upstream DNS failures; awaiting one shared live diagnostic probe.",
+      "last_item_count": 0,
+      "latest_upstream": null,
+      "latest_upstream_captured_at": null
+    },
+    {
+      "id": "v2ex",
+      "name": "V2EX",
+      "region": "cn",
+      "kind": "official-api",
+      "last_success_at": null,
+      "last_error_at": "2026-08-24T18:01:11.793Z",
+      "last_error": "fetch failed",
+      "last_item_count": 0
+    },
+    {
+      "id": "hackernews",
+      "name": "Hacker News",
+      "region": "global",
+      "kind": "official-api",
+      "last_success_at": "2026-08-24T18:01:11.793Z",
+      "last_error_at": null,
+      "last_error": null,
+      "last_item_count": 18,
+      "latest_upstream": "https://hacker-news.firebaseio.com/v0/topstories.json",
+      "latest_upstream_captured_at": "2026-08-24T18:01:11.793Z"
+    },
+    {
+      "id": "github",
+      "name": "GitHub",
+      "region": "global",
+      "kind": "official-api",
+      "last_success_at": "2026-08-24T18:01:11.793Z",
+      "last_error_at": null,
+      "last_error": null,
+      "last_item_count": 20,
+      "latest_upstream": "https://api.github.com/search/repositories",
+      "latest_upstream_captured_at": "2026-08-24T18:01:11.793Z"
+    }
+  ],
+  "categories": [
+    {
+      "category": "科技",
+      "count": 16,
+      "avg_score": 50.9
+    },
+    {
+      "category": "综合",
+      "count": 11,
+      "avg_score": 45.6
+    },
+    {
+      "category": "AI",
+      "count": 11,
+      "avg_score": 42
+    }
+  ],
+  "timeline": [
+    {
+      "t": "2026-08-24T18:00:00.000Z",
+      "score": 46.8,
+      "breakout": 35.6
+    }
+  ],
+  "buildSha": "1e0758341652c1e3992b9d8669746273aef7e01c"
+}

@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 
 const sourceFile = process.env.AI_DEBUG_FILE || '';
-const sourceUrl = process.env.AI_DEBUG_URL || 'https://internet-trend-radar.linyuxuanlin.workers.dev/api/debug';
+const sourceUrl = process.env.AI_DEBUG_URL || 'https://radar.wiki-power.com/api/debug';
 const minAttempts = Math.max(1, Number(process.env.AI_REGRESSION_MIN_ATTEMPTS || 10));
 const maxInvalidRate = Math.max(0, Math.min(1, Number(process.env.AI_REGRESSION_MAX_INVALID_RATE || 0.5)));
 const strict = process.env.AI_REGRESSION_STRICT === '1';

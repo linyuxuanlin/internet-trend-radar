@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const DEFAULT_BASE_URL = 'https://internet-trend-radar.linyuxuanlin.workers.dev';
+const DEFAULT_BASE_URL = 'https://radar.wiki-power.com';
 const EXPECTED_MODEL = process.env.EXPECTED_AI_MODEL || '@cf/meta/llama-3.1-8b-instruct-fast';
 const MIN_ATTEMPTS_FOR_EFFICIENCY_GATE = 3;
 const FORBIDDEN_MODELS = new Set([

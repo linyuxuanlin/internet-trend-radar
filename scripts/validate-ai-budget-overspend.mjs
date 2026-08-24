@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-const DEFAULT_BASE_URL = 'https://internet-trend-radar.linyuxuanlin.workers.dev';
-const EXPECTED_DAILY_BUDGET = 24;
+const DEFAULT_BASE_URL = 'https://radar.wiki-power.com';
+const EXPECTED_DAILY_BUDGET = 240;
 
 export function validateOverspend(payload) {
   if (!payload || typeof payload !== 'object') throw new Error('AI budget response must be an object');
@@ -42,13 +42,13 @@ export function assertNoAttemptGrowth(before, after) {
 }
 
 function runSelfTest() {
-  const normal = validateOverspend({ ok: true, preview: false, daily_budget: 24, attempts_today: 17 });
-  if (normal.budget_overspent !== false || normal.overspend_count !== 0 || normal.remaining_daily !== 7) {
+  const normal = validateOverspend({ ok: true, preview: false, daily_budget: 240, attempts_today: 17 });
+  if (normal.budget_overspent !== false || normal.overspend_count !== 0 || normal.remaining_daily !== 223) {
     throw new Error('normal budget self-test produced incorrect derived state');
   }
 
-  const overspent = validateOverspend({ ok: true, preview: false, daily_budget: 24, attempts_today: 80 });
-  if (overspent.budget_overspent !== true || overspent.overspend_count !== 56 || overspent.remaining_daily !== 0) {
+  const overspent = validateOverspend({ ok: true, preview: false, daily_budget: 240, attempts_today: 280 });
+  if (overspent.budget_overspent !== true || overspent.overspend_count !== 40 || overspent.remaining_daily !== 0) {
     throw new Error('overspent budget self-test produced incorrect derived state');
   }
   assertNoAttemptGrowth(overspent, { ...overspent });
@@ -62,7 +62,7 @@ function runSelfTest() {
   if (!mutationRejected) throw new Error('attempt-growth mutation self-test was not rejected');
 
   const invalidCases = [
-    [{ ok: true, preview: true, daily_budget: 24, attempts_today: 1 }, 'preview data'],
+    [{ ok: true, preview: true, daily_budget: 240, attempts_today: 1 }, 'preview data'],
     [{ ok: true, preview: false, daily_budget: 96, attempts_today: 1 }, 'daily_budget drifted']
   ];
   for (const [payload, expected] of invalidCases) {

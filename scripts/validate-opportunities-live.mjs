@@ -42,4 +42,14 @@ if (data.status === 'degraded') {
 }
 
 if (data.opportunities.length === 0) throw new Error('healthy published opportunities are empty');
+for (const [index, opportunity] of data.opportunities.entries()) {
+  if (!Array.isArray(opportunity.provenance) || opportunity.provenance.length < 1) {
+    throw new Error(`healthy opportunity ${index} is missing raw provenance`);
+  }
+  for (const signal of opportunity.provenance) {
+    if (!signal?.source_id || !signal?.upstream || !signal?.latest_captured_at) {
+      throw new Error(`healthy opportunity ${index} has incomplete provenance`);
+    }
+  }
+}
 console.log(`Live opportunities verified: ${data.opportunities.length} items build=${buildSha} ageSeconds=${Math.round(ageMs / 1000)}`);

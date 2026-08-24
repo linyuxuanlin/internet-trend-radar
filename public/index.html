@@ -18,7 +18,7 @@
 </head>
 <body>
 <div class="wrap">
-  <header class="top"><div class="brand"><h1>Trend Radar</h1><div class="sub">跨平台实时趋势 · 热度变化 · AI 解析 · 可行动机会</div></div><div class="live"><span class="dot"></span><span id="liveText">连接中</span></div></header>
+  <header class="top"><div class="brand"><h1>Trend Radar</h1><div class="sub">跨平台真实榜单 · 趋势指数 · AI 解析 · 可行动机会</div></div><div class="live"><span class="dot"></span><span id="liveText">连接中</span></div></header>
   <nav class="toolbar" id="filters"><button class="active" data-cat="全部">全部</button><button data-cat="AI">AI</button><button data-cat="科技">科技</button><button data-cat="财经">财经</button><button data-cat="消费">消费</button><button data-cat="社会">社会</button><button data-cat="娱乐">娱乐</button><button data-cat="游戏">游戏</button><button data-cat="体育">体育</button></nav>
 
   <section class="grid4">
@@ -29,36 +29,99 @@
   </section>
 
   <section class="main-grid">
-    <div class="panel"><h2>24 小时趋势强度</h2><div class="chart" id="timeline"></div><div class="legend"><span><i></i>综合热度</span><span class="b"><i></i>Breakout</span></div></div>
+    <div class="panel"><h2>24 小时趋势指数</h2><div class="chart" id="timeline"></div><div class="legend"><span><i></i>趋势指数（派生）</span><span class="b"><i></i>Breakout（派生）</span></div></div>
     <div class="panel"><h2>类别分布</h2><div class="bars" id="categoryBars"></div></div>
   </section>
 
+  <section class="panel" style="margin-top:14px"><h2>数据口径</h2><p id="dataContract" class="summary">原始指标来自各来源自身字段；趋势指数是项目派生指标。</p></section>
+
   <section class="content-grid">
-    <div class="panel"><h2>🔥 当前热度</h2><div class="trend-list" id="hotList"></div></div>
+    <div class="panel"><h2>📈 当前趋势指数</h2><div class="trend-list" id="hotList"></div></div>
     <div class="panel"><h2>🚀 正在冒头</h2><div class="trend-list" id="breakoutList"></div></div>
   </section>
 
   <section class="content-grid">
     <div class="panel"><h2>数据源健康</h2><div class="sources" id="sources"></div></div>
-    <div class="panel"><h2>每日邮件</h2><p class="sub">订阅每日精选趋势。MVP 先保存订阅，配置 Resend 后自动发送。</p><div class="subscribe"><input id="email" type="email" placeholder="you@example.com"><button id="subscribeBtn">订阅</button></div><div class="sub" id="subscribeMsg"></div></div>
+    <div class="panel"><h2>每日邮件</h2><p class="sub">订阅每日精选趋势。Cloudflare API 可用时保存订阅；GitHub Pages 快照模式专注真实趋势浏览。</p><div class="subscribe"><input id="email" type="email" placeholder="you@example.com"><button id="subscribeBtn">订阅</button></div><div class="sub" id="subscribeMsg"></div></div>
   </section>
 
-  <div class="foot">Trend Radar 只把热度当作需求信号之一；AI 机会分析不构成投资建议或收益保证。</div>
+  <div class="foot">原始热度/互动数来自各平台自身字段，单位仅在平台内有意义；趋势指数和 Breakout 是本项目派生指标。AI 机会分析不构成投资建议或收益保证。</div>
 </div>
 
-<dialog id="detail"><div class="modal-head"><div><div class="chip" id="dMeta"></div><h2 id="dTitle" style="margin:7px 0 0"></h2></div><button class="close" id="closeDetail">×</button></div><div class="modal-body"><h3>AI 解析</h3><p id="dSummary"></p><p id="dWhy" class="summary"></p><h3>可行动机会</h3><div id="dOpps"></div><h3>证据源</h3><div class="evidence" id="dEvidence"></div></div></dialog>
+<dialog id="detail"><div class="modal-head"><div><div class="chip" id="dMeta"></div><h2 id="dTitle" style="margin:7px 0 0"></h2></div><button class="close" id="closeDetail">×</button></div><div class="modal-body"><h3>AI 解析</h3><p id="dSummary"></p><p id="dWhy" class="summary"></p><h3>来源摘要</h3><p id="dSourceSummary" class="summary"></p><h3>可行动机会</h3><div id="dOpps"></div><h3>证据源</h3><div class="evidence" id="dEvidence"></div></div></dialog>
 
 <script>
-const state={data:null,category:'全部'};
+const state={data:null,snapshot:null,category:'全部',staticMode:false};
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function fmtTime(iso){if(!iso)return '尚未采集';const d=new Date(iso);return d.toLocaleString('zh-CN',{hour12:false,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}
+function sourceAgeHours(s){const t=Date.parse(s?.last_success_at||'');return Number.isFinite(t)?Math.max(0,(Date.now()-t)/3600000):null}
+function sourceIsHealthy(s){if(!s||s.enabled===false||s.freshness_status==='disabled')return false;if(s.freshness_status)return s.freshness_status==='healthy';const age=sourceAgeHours(s);return Boolean(s.last_success_at&&!s.last_error&&age!==null&&age<=2)}
 function renderLine(rows){const el=$('#timeline');if(!rows.length){el.innerHTML='<div class="empty">采集两轮后开始形成趋势曲线</div>';return}const w=720,h=210,p=28;const vals=rows.flatMap(x=>[Number(x.score||0),Number(x.breakout||0)]);const max=Math.max(100,...vals),min=0;const x=i=>p+(w-p*2)*(i/Math.max(1,rows.length-1));const y=v=>h-p-(h-p*2)*((v-min)/(max-min));const path=k=>rows.map((r,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(Number(r[k]||0)).toFixed(1)).join(' ');const labels=[0,25,50,75,100];el.innerHTML=`<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="24小时趋势曲线">${labels.map(v=>`<line class="axis" x1="${p}" y1="${y(v)}" x2="${w-p}" y2="${y(v)}"/><text class="chart-label" x="2" y="${y(v)+4}">${v}</text>`).join('')}<path class="line1" d="${path('score')}"/><path class="line2" d="${path('breakout')}"/>${rows.filter((_,i)=>i===0||i===rows.length-1||i===Math.floor(rows.length/2)).map((r,i,a)=>`<text class="chart-label" x="${x(rows.indexOf(r))-12}" y="${h-4}">${new Date(r.t).getHours()}:00</text>`).join('')}</svg>`}
-function topicCard(t){const opp=t.opportunities?.[0];return `<div class="trend" data-id="${esc(t.id)}"><div class="trend-top"><div class="trend-title">${esc(t.canonical_title)}</div><strong>${Math.round(t.current_score)}</strong></div><div class="chips"><span class="chip">${esc(t.category)}</span><span class="chip ${t.breakout_score>=70?'rise':''}">Breakout ${Math.round(t.breakout_score)}</span><span class="chip">${t.source_count} 源</span><span class="chip ${t.status==='hot'?'hot':''}">${esc(t.status)}</span></div>${t.ai_summary?`<div class="summary">${esc(t.ai_summary)}</div>`:''}${opp?`<div class="opp"><b>机会</b> · ${esc(opp.idea)}</div>`:''}</div>`}
-function render(){const d=state.data;if(!d)return;const topics=d.topics||[];$('#mTopics').textContent=topics.length;$('#mBreakout').textContent=topics.filter(x=>x.breakout_score>=70).length;const live=d.sources.filter(s=>s.last_success_at&&!s.last_error).length;$('#mSources').textContent=`${live}/${d.sources.length}`;$('#mScore').textContent=topics.length?Math.round(topics.reduce((a,b)=>a+Number(b.current_score||0),0)/topics.length):0;renderLine(d.timeline||[]);const max=Math.max(1,...(d.categories||[]).map(x=>Number(x.count||0)));$('#categoryBars').innerHTML=(d.categories||[]).slice(0,8).map(x=>`<div class="bar-row"><span>${esc(x.category)}</span><div class="track"><div class="fill" style="width:${Number(x.count)/max*100}%"></div></div><b>${x.count}</b></div>`).join('')||'<div class="empty">暂无分类数据</div>';const hot=[...topics].sort((a,b)=>b.current_score-a.current_score).slice(0,12);const breakout=[...topics].sort((a,b)=>b.breakout_score-a.breakout_score).slice(0,12);$('#hotList').innerHTML=hot.map(topicCard).join('')||'<div class="empty">第一次采集完成后显示热点</div>';$('#breakoutList').innerHTML=breakout.map(topicCard).join('')||'<div class="empty">至少两轮采集后更有意义</div>';$('#sources').innerHTML=d.sources.map(s=>{const ok=s.last_success_at&&(!s.last_error_at||new Date(s.last_success_at)>=new Date(s.last_error_at));return `<div class="source"><span>${esc(s.name)} <small class="sub">${esc(s.kind)}</small></span><span class="status ${ok?'ok':s.last_error?'bad':'wait'}">${ok?'● '+s.last_item_count+' 条 · '+fmtTime(s.last_success_at):s.last_error?'● 异常':'○ 待接入'}</span></div>`}).join('');document.querySelectorAll('.trend').forEach(el=>el.addEventListener('click',()=>openDetail(el.dataset.id)));$('#liveText').textContent='更新于 '+new Date(d.generatedAt).toLocaleTimeString('zh-CN',{hour12:false,hour:'2-digit',minute:'2-digit'})}
-async function load(){try{const q=state.category==='全部'?'':'?category='+encodeURIComponent(state.category);const r=await fetch('/api/dashboard'+q);if(!r.ok)throw new Error('HTTP '+r.status);state.data=await r.json();render()}catch(e){$('#liveText').textContent='API 尚未初始化';console.error(e)}}
-async function openDetail(id){const r=await fetch('/api/topic/'+encodeURIComponent(id));if(!r.ok)return;const t=await r.json();$('#dTitle').textContent=t.canonical_title;$('#dMeta').textContent=`${t.category} · 热度 ${Math.round(t.current_score)} · Breakout ${Math.round(t.breakout_score)}`;$('#dSummary').textContent=t.ai_summary||'等待 AI 分析';$('#dWhy').textContent=t.ai_why_now||'';$('#dOpps').innerHTML=(t.opportunities||[]).map(o=>`<div class="trend"><b>${esc(o.type)} · ${esc(o.idea)}</b><div class="summary">${esc(o.rationale)} · 难度 ${esc(o.difficulty)} · ${esc(o.time_to_market)} · 置信 ${Number(o.confidence||0)}%</div></div>`).join('')||'<div class="empty">暂无机会分析</div>';$('#dEvidence').innerHTML=(t.sources||[]).map(s=>`<div><span class="chip">${esc(s.source_id)} #${s.rank||'-'}</span> ${s.url?`<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a>`:esc(s.title)}</div>`).join('')||'<div class="empty">暂无证据</div>';$('#detail').showModal()}
-$('#closeDetail').addEventListener('click',()=>$('#detail').close());$('#filters').addEventListener('click',e=>{if(!e.target.dataset.cat)return;document.querySelectorAll('#filters button').forEach(b=>b.classList.remove('active'));e.target.classList.add('active');state.category=e.target.dataset.cat;load()});$('#subscribeBtn').addEventListener('click',async()=>{const email=$('#email').value.trim();$('#subscribeMsg').textContent='提交中…';try{const r=await fetch('/api/subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,categories:[state.category]})});const b=await r.json();$('#subscribeMsg').textContent=r.ok?'订阅已保存':'订阅失败：'+(b.error||r.status)}catch(e){$('#subscribeMsg').textContent='订阅失败'}});load();setInterval(load,60000);
+function topicCard(t){const opp=t.opportunities?.[0];return `<div class="trend" data-id="${esc(t.id)}"><div class="trend-top"><div class="trend-title">${esc(t.canonical_title)}</div><strong title="派生趋势指数，不是平台原始热度">${Math.round(t.current_score)}</strong></div><div class="chips"><span class="chip">${esc(t.category)}</span><span class="chip ${t.breakout_score>=70?'rise':''}">Breakout ${Math.round(t.breakout_score)}</span><span class="chip">${t.source_count} 源</span><span class="chip ${t.status==='hot'?'hot':''}">${esc(t.status)}</span></div>${t.ai_summary?`<div class="summary">AI：${esc(t.ai_summary)}</div>`:''}${t.source_summary?`<div class="summary">来源摘要：${esc(t.source_summary)}</div>`:''}${opp?`<div class="opp"><b>机会</b> · ${esc(opp.idea)}</div>`:''}</div>`}
+function render(){const d=state.data;if(!d)return;const topics=d.topics||[];const enabled=(d.sources||[]).filter(s=>s.enabled!==false);const healthy=enabled.filter(sourceIsHealthy);$('#mTopics').textContent=topics.length;$('#mBreakout').textContent=topics.filter(x=>x.breakout_score>=70).length;$('#mSources').textContent=`${healthy.length}/${enabled.length}`;$('#mScore').textContent=topics.length?Math.round(topics.reduce((a,b)=>a+Number(b.current_score||0),0)/topics.length):0;const coverage=d.coverage||{};$('#dataContract').textContent=`原始 heat / engagement 来自各来源自身字段，NULL 表示上游未提供；趋势指数与 Breakout 是派生指标，不是平台热度。当前启用 ${coverage.active_sources??enabled.length} 个来源，健康 ${coverage.healthy_active_sources??healthy.length} 个；停用或异常来源不会进入当前评分。点击热点可查看字段定义与 upstream。`;renderLine(d.timeline||[]);const max=Math.max(1,...(d.categories||[]).map(x=>Number(x.count||0)));$('#categoryBars').innerHTML=(d.categories||[]).slice(0,8).map(x=>`<div class="bar-row"><span>${esc(x.category)}</span><div class="track"><div class="fill" style="width:${Number(x.count)/max*100}%"></div></div><b>${x.count}</b></div>`).join('')||'<div class="empty">暂无分类数据</div>';const hot=[...topics].sort((a,b)=>b.current_score-a.current_score).slice(0,12);const breakout=[...topics].sort((a,b)=>b.breakout_score-a.breakout_score).slice(0,12);$('#hotList').innerHTML=hot.map(topicCard).join('')||'<div class="empty">第一次采集完成后显示热点</div>';$('#breakoutList').innerHTML=breakout.map(topicCard).join('')||'<div class="empty">至少两轮采集后更有意义</div>';$('#sources').innerHTML=d.sources.map(s=>{const disabled=s.enabled===false||s.freshness_status==='disabled';const ok=sourceIsHealthy(s);const stale=!disabled&&!ok&&((s.freshness_status==='stale')||(sourceAgeHours(s)!==null&&sourceAgeHours(s)>2));return `<div class="source"><span>${esc(s.name)} <small class="sub">${esc(s.kind)}</small></span><span class="status ${disabled?'wait':ok?'ok':stale?'bad':s.last_error?'bad':'wait'}">${disabled?'○ 已停用':ok?'● '+s.last_item_count+' 条 · '+fmtTime(s.last_success_at):stale?'△ 已过期 · '+fmtTime(s.last_success_at):s.last_error?'● 异常':'○ 待接入'}</span></div>`}).join('');document.querySelectorAll('.trend').forEach(el=>el.addEventListener('click',()=>openDetail(el.dataset.id)));$('#liveText').textContent='更新于 '+new Date(d.generatedAt).toLocaleTimeString('zh-CN',{hour12:false,hour:'2-digit',minute:'2-digit'})}
+function applyContractLabel(){const d=state.data||{};const contract=d.data_contract||{};const coverage=d.coverage||{};const enabled=(d.sources||[]).filter(s=>s.enabled!==false);const healthy=enabled.filter(sourceIsHealthy);$('#dataContract').textContent=`${contract.raw_field_semantics||'原始 heat / engagement 来自各来源自身字段，NULL 表示上游未提供'}；趋势指数与 Breakout 是派生指标，不是平台热度。趋势指数计算：${contract.derived_score_method||'未声明'}。Breakout 计算：${contract.breakout_score_method||'未声明'}。当前启用 ${coverage.active_sources??enabled.length} 个来源，健康 ${coverage.healthy_active_sources??healthy.length} 个；停用或异常来源不会进入当前评分。点击热点可查看声明字段、实际字段路径与 upstream。`}
+async function load(){
+  const q=state.category==='全部'?'':'?category='+encodeURIComponent(state.category);
+  let apiError=null;
+  for(const endpoint of ['/api/dashboard','https://radar.wiki-power.com/api/dashboard']){
+    try{
+      const r=await fetch(endpoint+q,{cache:'no-store'});
+      if(!r.ok)throw new Error(endpoint+' HTTP '+r.status);
+      state.staticMode=false;
+      state.snapshot=null;
+      state.data=await r.json();
+      render();
+      applyContractLabel();
+      return;
+    }catch(error){ apiError=error; }
+  }
+  {
+    try{
+      const r=await fetch('data/dashboard.json',{cache:'no-store'});
+      if(!r.ok)throw new Error('snapshot HTTP '+r.status);
+      const d=await r.json();
+      if(d.preview!==false||d.ready!==true||!Array.isArray(d.topics)||!d.topics.length)throw new Error('snapshot is not real-data ready');
+      const generatedAt=Date.parse(d.generatedAt);
+      const snapshotAge=Date.now()-generatedAt;
+      if(!Number.isFinite(generatedAt))throw new Error('snapshot timestamp invalid');
+      if(snapshotAge < -5*60*1000)throw new Error('snapshot timestamp is in the future');
+      if(snapshotAge > 3*60*60*1000)throw new Error('snapshot stale: '+Math.round(snapshotAge/60000)+' minutes old');
+      state.staticMode=true;
+      state.snapshot=d;
+      const topics=state.category==='全部'?d.topics:d.topics.filter(t=>t.category===state.category);
+      const categories=state.category==='全部'?(d.categories||[]):(d.categories||[]).filter(x=>x.category===state.category);
+      state.data={...d,topics,categories};
+      render();
+      applyContractLabel();
+      $('#liveText').textContent='真实快照 · '+new Date(d.generatedAt).toLocaleTimeString('zh-CN',{hour12:false,hour:'2-digit',minute:'2-digit'});
+      return;
+    }catch(snapshotError){
+      $('#liveText').textContent=String(snapshotError?.message||'').includes('snapshot stale')?'真实数据快照已过期':'真实数据暂不可用';
+      console.error('API failed',apiError,'snapshot failed',snapshotError);
+    }
+  }
+}
+async function openDetail(id){
+  let t=null;
+  if(!state.staticMode){
+    for(const endpoint of ['/api/topic/','https://radar.wiki-power.com/api/topic/']){
+      try{const r=await fetch(endpoint+encodeURIComponent(id),{cache:'no-store'});if(r.ok){t=await r.json();break}}catch(e){console.warn('topic API unavailable',e)}
+    }
+  }
+  if(!t)t=(state.snapshot?.topics||state.data?.topics||[]).find(x=>x.id===id)||null;
+  if(!t)return;
+  $('#dTitle').textContent=t.canonical_title;
+  $('#dMeta').textContent=`${t.category} · 趋势指数 ${Math.round(t.current_score)} · Breakout ${Math.round(t.breakout_score)}`;
+  $('#dSummary').textContent=t.ai_summary||'该快照来自真实榜单数据；AI 解析等待后端恢复后补充';
+  $('#dWhy').textContent=t.ai_why_now||'';
+  const metricValue=v=>v===null||v===undefined?'NULL（上游未提供）':String(v);
+  $('#dSourceSummary').innerHTML=(t.raw_signals||[]).map(s=>{const paths=s.metric_paths||{};const peaks=s.peak_evidence||{};const observed=(s.observed_upstreams||[]).filter(Boolean);const peakText=(label,evidence)=>evidence?.captured_at||evidence?.upstream?`${label}峰值证据：${esc(evidence.captured_at||'')} · ${esc(evidence.upstream||'')} · ${esc(evidence.source_kind||'')}`:'';return `<div><b>${esc(s.source_name||s.source_id)}</b> · ${esc(s.source_kind||'未声明')} · 榜单名次 ${esc(s.best_rank||'-')} · 当前 heat ${esc(metricValue(s.raw_heat_latest))} / 24h 峰值 ${esc(metricValue(s.raw_heat_max))} · 当前 engagement ${esc(metricValue(s.raw_engagement_latest))} / 24h 峰值 ${esc(metricValue(s.raw_engagement_max))}<br><span class="summary">声明字段：${esc(s.metric_definition?.heat||'未声明')} / ${esc(s.metric_definition?.engagement||'未声明')} · 实际字段（当前值）：${esc(paths.heat||'未记录')} / ${esc(paths.engagement||'未记录')} · 最新 upstream：${esc(s.upstream||'未记录')}</span><br><span class="summary">${peakText('heat',peaks.heat)} ${peakText('engagement',peaks.engagement)}</span>${observed.length>1?`<br><span class="summary">24h upstream 链路：${observed.map(esc).join(' → ')}</span>`:''}</div>`}).join('')||'原始指标暂无';
+  $('#dOpps').innerHTML=(t.opportunities||[]).map(o=>`<div class="trend"><b>${esc(o.type)} · ${esc(o.idea)}</b><div class="summary">${esc(o.rationale)} · 难度 ${esc(o.difficulty)} · ${esc(o.time_to_market)} · 置信 ${Number(o.confidence||0)}%</div></div>`).join('')||'<div class="empty">真实趋势已就绪；机会分析等待 AI 后端恢复</div>';
+  $('#dEvidence').innerHTML=(t.sources||[]).map(s=>`<div><span class="chip">${esc(s.source_id)} #${s.rank||'-'}</span> ${s.url?`<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a>`:esc(s.title)}</div>`).join('')||'<div class="empty">暂无证据</div>';
+  $('#detail').showModal()
+}
+$('#closeDetail').addEventListener('click',()=>$('#detail').close());$('#filters').addEventListener('click',e=>{if(!e.target.dataset.cat)return;document.querySelectorAll('#filters button').forEach(b=>b.classList.remove('active'));e.target.classList.add('active');state.category=e.target.dataset.cat;load()});$('#subscribeBtn').addEventListener('click',async()=>{const email=$('#email').value.trim();$('#subscribeMsg').textContent='提交中…';try{const r=await fetch((location.hostname.endsWith('github.io')?'https://radar.wiki-power.com':'')+'/api/subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,categories:[state.category]})});const b=await r.json();$('#subscribeMsg').textContent=r.ok?'订阅已保存':'订阅失败：'+(b.error||r.status)}catch(e){$('#subscribeMsg').textContent='订阅失败'}});load();setInterval(load,60000);
 </script>
 </body>
 </html>

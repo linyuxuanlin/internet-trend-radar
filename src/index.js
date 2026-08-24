@@ -3,6 +3,8 @@ import { collectAll } from './collector.js';
 import { enrichTopTopics } from './ai.js';
 import { sendDailyDigest } from './email.js';
 import { ensureSchema } from './schema.js';
+import { safeJsonParse } from './utils.js';
+import { officialMetricUpstreamPredicate } from './source-metadata.js';
 
 async function ensureInitialData(env) {
   if (!env.DB) return { ok: false, reason: 'missing-db' };
@@ -151,9 +153,27 @@ async function debugStatus(env) {
     },
     ready: false,
     raw_items: null,
+    data_quality: {
+      raw_items_missing_upstream: null,
+      raw_items_invalid_upstream: null,
+      raw_items_missing_heat: null,
+      raw_items_missing_engagement: null,
+      metric_path_violations: {
+        heat: null,
+        engagement: null
+      },
+      contract_violations: {
+        heat: null,
+        engagement: null,
+        heat_path: null,
+        engagement_path: null
+      },
+      ok: null
+    },
     topics: null,
     sources: null,
     healthy_sources: null,
+    stale_sources: null,
     failed_sources: null,
     last_success_at: null,
     recent_errors: [],
@@ -203,13 +223,14 @@ async function debugStatus(env) {
     const modelReasons1hProbe = buildAttemptReasonsProbe(env, 1, true);
     const attemptReasons24hProbe = buildAttemptReasonsProbe(env, 24, false);
     const modelReasons24hProbe = buildAttemptReasonsProbe(env, 24, true);
-    const [raw, topics, sources, healthy, failed, lastSuccess, errors, aiEligible, aiAttempted, aiVerified, aiStale, aiLastUpdated, aiQuota, aiAttemptReasons1h, aiModelReasons1h, aiAttemptReasons24h, aiModelReasons24h] = await Promise.all([
+    const [raw, topics, sources, healthy, stale, failed, lastSuccess, errors, aiEligible, aiAttempted, aiVerified, aiStale, aiLastUpdated, aiQuota, aiAttemptReasons1h, aiModelReasons1h, aiAttemptReasons24h, aiModelReasons24h] = await Promise.all([
       env.DB.prepare('SELECT COUNT(*) as count FROM raw_items').first(),
       env.DB.prepare('SELECT COUNT(*) as count FROM topics').first(),
       env.DB.prepare('SELECT COUNT(*) as count FROM sources').first(),
-      env.DB.prepare(`SELECT COUNT(*) as count FROM sources WHERE last_success_at IS NOT NULL AND (last_error_at IS NULL OR last_success_at >= last_error_at)`).first(),
-      env.DB.prepare(`SELECT COUNT(*) as count FROM sources WHERE last_error_at IS NOT NULL AND (last_success_at IS NULL OR last_error_at > last_success_at)`).first(),
-      env.DB.prepare('SELECT MAX(last_success_at) as value FROM sources').first(),
+      env.DB.prepare(`SELECT COUNT(*) as count FROM sources WHERE enabled=1 AND last_success_at IS NOT NULL AND julianday(last_success_at) >= julianday('now','-2 hours') AND (last_error_at IS NULL OR last_success_at >= last_error_at)`).first(),
+      env.DB.prepare(`SELECT COUNT(*) as count FROM sources WHERE enabled=1 AND last_success_at IS NOT NULL AND julianday(last_success_at) < julianday('now','-2 hours') AND (last_error_at IS NULL OR last_success_at >= last_error_at)`).first(),
+      env.DB.prepare(`SELECT COUNT(*) as count FROM sources WHERE enabled=1 AND last_error_at IS NOT NULL AND (last_success_at IS NULL OR last_success_at <= last_error_at)`).first(),
+      env.DB.prepare('SELECT MAX(CASE WHEN enabled=1 THEN last_success_at END) as value FROM sources').first(),
       env.DB.prepare(`SELECT id,last_error,last_error_at FROM sources WHERE last_error IS NOT NULL ORDER BY last_error_at DESC LIMIT 6`).all(),
       env.DB.prepare(`SELECT COUNT(*) as count FROM topics WHERE current_score >= 45`).first(),
       attemptedProbe,
@@ -233,9 +254,107 @@ async function debugStatus(env) {
     ]);
 
     status.raw_items = Number(raw?.count || 0);
+    const provenance = await env.DB.prepare(`
+      SELECT
+        SUM(CASE WHEN json_extract(raw_json,'$.trendRadarUpstream') IS NULL OR length(trim(json_extract(raw_json,'$.trendRadarUpstream'))) = 0 THEN 1 ELSE 0 END) AS missing_upstream,
+        SUM(CASE WHEN json_extract(raw_json,'$.trendRadarUpstream') IS NOT NULL
+                  AND json_extract(raw_json,'$.trendRadarUpstream') NOT LIKE 'https://%'
+                  AND json_extract(raw_json,'$.trendRadarUpstream') NOT LIKE 'xiaohongshu-mcp:%' THEN 1 ELSE 0 END) AS invalid_upstream,
+        SUM(CASE WHEN heat IS NULL THEN 1 ELSE 0 END) AS missing_heat,
+        SUM(CASE WHEN engagement IS NULL THEN 1 ELSE 0 END) AS missing_engagement,
+        SUM(CASE WHEN heat IS NOT NULL AND (json_extract(raw_json,'$.trendRadarMetrics.heat_path') IS NULL OR length(trim(json_extract(raw_json,'$.trendRadarMetrics.heat_path'))) = 0) THEN 1 ELSE 0 END) AS heat_path_violations,
+        SUM(CASE WHEN engagement IS NOT NULL AND (json_extract(raw_json,'$.trendRadarMetrics.engagement_path') IS NULL OR length(trim(json_extract(raw_json,'$.trendRadarMetrics.engagement_path'))) = 0) THEN 1 ELSE 0 END) AS engagement_path_violations
+      FROM raw_items
+    `).first().catch(() => null);
+    status.data_quality = {
+      raw_items_missing_upstream: Number(provenance?.missing_upstream || 0),
+      raw_items_invalid_upstream: Number(provenance?.invalid_upstream || 0),
+      raw_items_missing_heat: Number(provenance?.missing_heat || 0),
+      raw_items_missing_engagement: Number(provenance?.missing_engagement || 0),
+      metric_path_violations: {
+        heat: Number(provenance?.heat_path_violations || 0),
+        engagement: Number(provenance?.engagement_path_violations || 0)
+      },
+      contract_violations: { heat: 0, engagement: 0 },
+      ok: true
+    };
+    let sourceMetricRows = [];
+    let sourceMetricProbeOk = true;
+    try {
+      const result = await env.DB.prepare(`
+        SELECT s.id,s.name,s.region,s.kind,s.enabled,s.metadata_json,
+               COUNT(r.id) AS raw_items,
+               SUM(CASE WHEN r.id IS NOT NULL AND r.heat IS NULL THEN 1 ELSE 0 END) AS missing_heat,
+               SUM(CASE WHEN r.id IS NOT NULL AND r.engagement IS NULL THEN 1 ELSE 0 END) AS missing_engagement,
+               SUM(CASE WHEN r.id IS NOT NULL AND r.heat = 0 THEN 1 ELSE 0 END) AS zero_heat,
+               SUM(CASE WHEN r.id IS NOT NULL AND r.engagement = 0 THEN 1 ELSE 0 END) AS zero_engagement,
+               SUM(CASE WHEN r.id IS NOT NULL AND json_type(s.metadata_json,'$.heat') = 'null' AND r.heat IS NOT NULL THEN 1 ELSE 0 END) AS contract_heat_violations,
+               SUM(CASE WHEN r.id IS NOT NULL AND json_type(s.metadata_json,'$.engagement') = 'null' AND r.engagement IS NOT NULL THEN 1 ELSE 0 END) AS contract_engagement_violations,
+               SUM(CASE WHEN r.id IS NOT NULL AND r.heat IS NOT NULL AND ${officialMetricUpstreamPredicate('s.id')}
+                         AND json_extract(r.raw_json,'$.trendRadarMetrics.heat_path') != json_extract(s.metadata_json,'$.heat') THEN 1 ELSE 0 END) AS definition_heat_path_violations,
+               SUM(CASE WHEN r.id IS NOT NULL AND r.engagement IS NOT NULL AND ${officialMetricUpstreamPredicate('s.id')}
+                         AND json_extract(r.raw_json,'$.trendRadarMetrics.engagement_path') != json_extract(s.metadata_json,'$.engagement') THEN 1 ELSE 0 END) AS definition_engagement_path_violations,
+               SUM(CASE WHEN r.id IS NOT NULL AND r.heat IS NOT NULL AND (json_extract(r.raw_json,'$.trendRadarMetrics.heat_path') IS NULL OR length(trim(json_extract(r.raw_json,'$.trendRadarMetrics.heat_path'))) = 0) THEN 1 ELSE 0 END) AS heat_path_violations,
+               SUM(CASE WHEN r.id IS NOT NULL AND r.engagement IS NOT NULL AND (json_extract(r.raw_json,'$.trendRadarMetrics.engagement_path') IS NULL OR length(trim(json_extract(r.raw_json,'$.trendRadarMetrics.engagement_path'))) = 0) THEN 1 ELSE 0 END) AS engagement_path_violations,
+               COUNT(DISTINCT CASE WHEN json_extract(r.raw_json,'$.trendRadarUpstream') IS NOT NULL
+                                    THEN json_extract(r.raw_json,'$.trendRadarUpstream') END) AS upstream_count,
+               MAX(r.captured_at) AS latest_captured_at
+          FROM sources s
+          LEFT JOIN raw_items r ON r.source_id = s.id
+         GROUP BY s.id,s.name,s.region,s.kind,s.enabled,s.metadata_json
+         ORDER BY s.enabled DESC,s.region,s.id
+      `).all();
+      sourceMetricRows = result?.results || [];
+    } catch (error) {
+      console.warn('source metric quality probe failed; keeping debug endpoint available', error);
+      sourceMetricProbeOk = false;
+    }
+    status.source_metric_quality = sourceMetricRows.map(row => ({
+      id: row.id,
+      name: row.name,
+      region: row.region,
+      kind: row.kind,
+      enabled: Boolean(Number(row.enabled ?? 1)),
+      metric_definition: safeJsonParse(row.metadata_json, null),
+      raw_items: Number(row.raw_items || 0),
+      missing_heat: Number(row.missing_heat || 0),
+      missing_engagement: Number(row.missing_engagement || 0),
+      zero_heat: Number(row.zero_heat || 0),
+      zero_engagement: Number(row.zero_engagement || 0),
+      contract_heat_violations: Number(row.contract_heat_violations || 0),
+      contract_engagement_violations: Number(row.contract_engagement_violations || 0),
+      definition_heat_path_violations: Number(row.definition_heat_path_violations || 0),
+      definition_engagement_path_violations: Number(row.definition_engagement_path_violations || 0),
+      heat_path_violations: Number(row.heat_path_violations || 0),
+      engagement_path_violations: Number(row.engagement_path_violations || 0),
+      upstream_count: Number(row.upstream_count || 0),
+      latest_captured_at: row.latest_captured_at || null
+    }));
+    const contractHeatViolations = sourceMetricRows.reduce((sum, row) => sum + Number(row.contract_heat_violations || 0), 0);
+    const contractEngagementViolations = sourceMetricRows.reduce((sum, row) => sum + Number(row.contract_engagement_violations || 0), 0);
+    const definitionHeatPathViolations = sourceMetricRows.reduce((sum, row) => sum + Number(row.definition_heat_path_violations || 0), 0);
+    const definitionEngagementPathViolations = sourceMetricRows.reduce((sum, row) => sum + Number(row.definition_engagement_path_violations || 0), 0);
+    status.data_quality.contract_violations = {
+      heat: contractHeatViolations,
+      engagement: contractEngagementViolations,
+      heat_path: definitionHeatPathViolations,
+      engagement_path: definitionEngagementPathViolations
+    };
+    status.data_quality.ok = (
+      sourceMetricProbeOk &&
+      status.data_quality.raw_items_missing_upstream === 0 &&
+      status.data_quality.raw_items_invalid_upstream === 0 &&
+      status.data_quality.metric_path_violations.heat === 0 &&
+      status.data_quality.metric_path_violations.engagement === 0 &&
+      contractHeatViolations === 0 &&
+      contractEngagementViolations === 0
+      && definitionHeatPathViolations === 0
+      && definitionEngagementPathViolations === 0
+    );
     status.topics = Number(topics?.count || 0);
     status.sources = Number(sources?.count || 0);
     status.healthy_sources = Number(healthy?.count || 0);
+    status.stale_sources = Number(stale?.count || 0);
     status.failed_sources = Number(failed?.count || 0);
     status.last_success_at = lastSuccess?.value || null;
     status.recent_errors = errors?.results || [];
@@ -269,7 +388,7 @@ async function debugStatus(env) {
 
     status.ai.ready_for_inference = status.ai.binding && status.ai.eligible_topics > 0 && status.ai.pending_topics > 0 && !status.ai.quota_exhausted;
     status.ai.blocked_reason = classifyAIBlocker(status.ai, true);
-    status.ready = status.raw_items > 0 && status.topics > 0 && status.healthy_sources > 0;
+    status.ready = status.raw_items > 0 && status.topics > 0 && status.healthy_sources > 0 && status.data_quality.ok === true;
   } catch (err) {
     status.error = String(err?.message || err);
     status.ai.blocked_reason = 'ai-readiness-query-failed';
@@ -323,10 +442,9 @@ export default {
           console.error('dashboard D1 schema bootstrap failed; trying real snapshot fallback', err);
         }
       }
-      // Dashboard reads must be side-effect free. AI enrichment is deliberately
-      // owned by the paced collection/scheduler path so monitoring, CI, users,
-      // or crawlers cannot spend the daily Workers AI budget just by reading.
-      await ensureInitialData(env);
+      // Dashboard reads must be side-effect free. Collection and AI enrichment
+      // are owned by the scheduled/admin paths so monitoring, users, or crawlers
+      // cannot start competing D1 rebuilds or spend the AI budget by reading.
     }
 
     if (url.pathname.startsWith('/api/')) return routeApi(env, request);
@@ -336,7 +454,7 @@ export default {
   async scheduled(controller, env, ctx) {
     ctx.waitUntil((async () => {
       await ensureSchema(env);
-      if (controller.cron === '5 0 * * *') {
+      if (controller.cron === '0 1 * * *') {
         await sendDailyDigest(env);
         return;
       }

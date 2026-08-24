@@ -1,19 +1,96 @@
 import { categoryFor, fingerprintTitle, numberFromUnknown } from '../utils.js';
+import { SOURCE_METRICS } from '../source-metadata.js';
 
 const SOURCE_NAMES = {
   weibo: '微博', zhihu: '知乎', bilibili: '哔哩哔哩', baidu: '百度', douyin: '抖音',
   toutiao: '今日头条', '36kr': '36氪', juejin: '稀土掘金', hupu: '虎扑', v2ex: 'V2EX'
 };
 
-function pickHeat(item) {
-  const candidates = [item.hot, item.hotValue, item.hot_value, item.hotness, item.heat, item.score, item.view, item.views, item.data?.view, item.data?.like];
-  return Math.max(0, ...candidates.map(numberFromUnknown));
+function metricOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'string' && !/-?\d/.test(value)) return null;
+  const number = typeof value === 'number' ? value : numberFromUnknown(String(value));
+  return Number.isFinite(number) && number >= 0 ? number : null;
 }
 
-function pickEngagement(item) {
-  const values = [item.comments, item.comment, item.reply, item.data?.reply, item.data?.favorite, item.data?.share, item.data?.like]
-    .map(numberFromUnknown).filter(Boolean);
-  return values.reduce((a, b) => a + b, 0);
+function metricValue(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'string' && !/-?\d/.test(value)) return null;
+  const number = typeof value === 'number' ? value : numberFromUnknown(String(value));
+  return Number.isFinite(number) && number >= 0 ? number : null;
+}
+
+function parsedMetricText(value) {
+  const text = String(value ?? '').trim();
+  if (!/-?\d/.test(text)) return null;
+  return metricOrNull(numberFromUnknown(text));
+}
+
+function firstMetric(item, candidates) {
+  for (const [path, value] of candidates) {
+    const number = metricValue(value);
+    if (number !== null) return { value: number, path };
+  }
+  return { value: null, path: null };
+}
+
+function pickMetrics(item, sourceId = '') {
+  // Likes are engagement, not a heat/rank metric. The generic upstream does
+  // not document whether similarly named fields are aliases or independent
+  // counters, so choose one documented field by precedence instead of taking
+  // a maximum or summing potentially duplicated values.
+  const declared = item?._trendRadarMetricPaths || {};
+  const heatCandidates = [
+    ['item.hot', item.hot],
+    ['item.hotValue', item.hotValue],
+    ['item.hot_value', item.hot_value],
+    ['item.hotness', item.hotness],
+    ['item.heat', item.heat],
+    ['item.score', item.score],
+    ['item.view', item.view],
+    ['item.views', item.views],
+    ['item.data.view', item.data?.view]
+  ];
+  const engagementCandidates = [
+    ['item.engagement', item.engagement],
+    ['item.replies', item.replies],
+    ['item.comments', item.comments],
+    ['item.comment', item.comment],
+    ['item.reply', item.reply],
+    ['item.data.reply', item.data?.reply],
+    ['item.data.favorite', item.data?.favorite],
+    ['item.data.share', item.data?.share],
+    ['item.data.like', item.data?.like]
+  ];
+  const definition = SOURCE_METRICS[sourceId] || {};
+  const allowedHeatCandidates = definition.heat === null ? [] : heatCandidates;
+  const allowedEngagementCandidates = definition.engagement === null ? [] : engagementCandidates;
+  if (declared.heat && definition.heat !== null) allowedHeatCandidates.unshift([declared.heat, item.hot]);
+  if (declared.engagement && definition.engagement !== null) allowedEngagementCandidates.unshift([declared.engagement, item.engagement]);
+  const heat = firstMetric(item, allowedHeatCandidates);
+  const engagement = firstMetric(item, allowedEngagementCandidates);
+  return { heat, engagement };
+}
+
+function sumPresentMetrics(object, keys) {
+  const values = keys
+    .map(key => object?.[key])
+    .filter(value => value !== null && value !== undefined && value !== '')
+    .map(value => Number(value))
+    .filter(value => Number.isFinite(value) && value >= 0);
+  return values.length ? values.reduce((sum, value) => sum + value, 0) : null;
+}
+
+export function normalizePublishedAt(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const text = String(value).trim();
+  const numeric = Number(text);
+  const timestamp = Number.isFinite(numeric)
+    ? numeric * (numeric < 1e12 ? 1000 : 1)
+    : Date.parse(text);
+  if (!Number.isFinite(timestamp)) return null;
+  const date = new Date(timestamp);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
 function upstreamBases(env) {
@@ -79,12 +156,13 @@ async function fetchLooseJson(url, options = {}) {
 }
 
 async function fetchFromUpstream(base, sourceId) {
-  const { body } = await fetchJson(`${base}/${encodeURIComponent(sourceId)}`, {
+  const upstream = `${base}/${encodeURIComponent(sourceId)}`;
+  const { body } = await fetchJson(upstream, {
     cf: { cacheTtl: 60, cacheEverything: false }
   });
   const list = Array.isArray(body?.data) ? body.data : [];
   if (!list.length) throw new Error('empty real-data response');
-  return { body, list, upstream: base };
+  return { body, list, upstream };
 }
 
 function mapDouyinRows(body, upstream) {
@@ -100,9 +178,10 @@ function mapDouyinRows(body, upstream) {
     list: rows.map((v, i) => ({
       id: v.sentence_id || v.word_id || `douyin-${i}`,
       title: v.word || v.sentence || v.title,
-      hot: v.hot_value || v.hot || v.score,
+      hot: v.hot_value ?? v.hot ?? v.score,
       timestamp: v.event_time || v.timestamp,
-      url: v.sentence_id ? `https://www.douyin.com/hot/${v.sentence_id}` : `https://www.douyin.com/search/${encodeURIComponent(v.word || v.sentence || v.title || '')}`
+      url: v.sentence_id ? `https://www.douyin.com/hot/${v.sentence_id}` : `https://www.douyin.com/search/${encodeURIComponent(v.word || v.sentence || v.title || '')}`,
+      _trendRadarMetricPaths: { heat: 'word_list[].hot_value|hot|score (official or fallback)' }
     }))
   };
 }
@@ -116,9 +195,10 @@ function mapDouyinHotListRows(body, upstream) {
     list: rows.map((v, i) => ({
       id: v.id || v.sentence_id || v.url || `douyin-hot-list-${i}`,
       title: v.title || v.word || v.sentence,
-      hot: v.hotness || v.hot_value || v.hot || v.score,
+      hot: v.hotness ?? v.hot_value ?? v.hot ?? v.score,
       timestamp: v.timestamp || v.event_time,
-      url: v.url || (v.sentence_id ? `https://www.douyin.com/hot/${v.sentence_id}` : `https://www.douyin.com/search/${encodeURIComponent(v.title || v.word || v.sentence || '')}`)
+      url: v.url || (v.sentence_id ? `https://www.douyin.com/hot/${v.sentence_id}` : `https://www.douyin.com/search/${encodeURIComponent(v.title || v.word || v.sentence || '')}`),
+      _trendRadarMetricPaths: { heat: 'word_list[].hotness|hot_value|hot|score (official or fallback)' }
     }))
   };
 }
@@ -140,9 +220,10 @@ function mapDouyinFlatRows(body, upstream) {
       return {
         id: v.id || v.sentence_id || v.url || v.mobileUrl || v.mobilUrl || `douyin-flat-${i}`,
         title,
-        hot: v.hot || v.hotness || v.hot_value || v.score,
+        hot: v.hot ?? v.hotness ?? v.hot_value ?? v.score,
         timestamp: v.timestamp || v.event_time,
-        url: v.url || v.mobileUrl || v.mobilUrl || `https://www.douyin.com/search/${encodeURIComponent(title)}`
+        url: v.url || v.mobileUrl || v.mobilUrl || `https://www.douyin.com/search/${encodeURIComponent(title)}`,
+        _trendRadarMetricPaths: { heat: 'data[].hot|hotness|hot_value|score (official or fallback)' }
       };
     }).filter(v => String(v.title || '').trim())
   };
@@ -205,6 +286,159 @@ async function fetchDouyinDirect() {
 }
 
 async function fetchDirect(sourceId) {
+  if (sourceId === 'v2ex') {
+    const upstream = 'https://www.v2ex.com/api/topics/hot.json';
+    const { body } = await fetchJson(upstream);
+    if (!Array.isArray(body) || !body.length) throw new Error('V2EX direct response empty');
+    return {
+      body: { title: 'V2EX' },
+      upstream,
+      list: body.map(item => ({
+        id: item?.id,
+        title: item?.title,
+        url: item?.url || (item?.id ? `https://www.v2ex.com/t/${item.id}` : ''),
+        // V2EX exposes reply count here, not an independent heat score.
+        hot: null,
+        engagement: item?.replies,
+        _trendRadarMetricPaths: { heat: null, engagement: 'topics[].replies' },
+        author: item?.member?.username
+      }))
+    };
+  }
+
+  if (sourceId === 'bilibili') {
+    const endpoints = [
+      'https://api.bilibili.com/x/web-interface/ranking/region?rid=1&day=3&original=0',
+      'https://api.bilibili.com/x/web-interface/ranking/v2?rid=0&type=all',
+      'https://api.bilibili.com/x/web-interface/popular?ps=20&pn=1'
+    ];
+    let body;
+    let upstream;
+    let lastError;
+    for (const endpoint of endpoints) {
+      try {
+        const result = await fetchJson(endpoint, { headers: { 'user-agent': 'qwq', referer: 'https://www.bilibili.com/' } });
+        const rows = Array.isArray(result.body?.data?.list) ? result.body.data.list : result.body?.data;
+        if (Number(result.body?.code) === 0 && Array.isArray(rows) && rows.length) {
+          body = result.body;
+          upstream = endpoint;
+          body.data = { list: rows };
+          break;
+        }
+        lastError = new Error(`code ${result.body?.code ?? 'unknown'}`);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (!body) {
+      throw new Error(`Bilibili direct response empty: ${String(lastError?.message || lastError || 'unknown error')}`);
+    }
+    return {
+      body: { title: '哔哩哔哩' },
+      upstream,
+      list: body.data.list.map(item => ({
+        id: item?.bvid,
+        title: item?.title,
+        url: item?.bvid ? `https://www.bilibili.com/video/${item.bvid}` : item?.short_link_v2,
+        hot: item?.stat?.view,
+        engagement: sumPresentMetrics(item?.stat, ['like', 'reply', 'coin', 'favorite', 'share', 'danmaku']),
+        author: item?.owner?.name,
+        _trendRadarMetricPaths: { heat: 'data.list[].stat.view', engagement: 'stat.like+reply+coin+favorite+share+danmaku' }
+      }))
+    };
+  }
+
+  if (sourceId === 'juejin') {
+    const upstream = 'https://api.juejin.cn/recommend_api/v1/article/recommend_all_feed';
+    const { body } = await fetchJson(upstream, {
+      method: 'POST',
+      headers: {
+        origin: 'https://juejin.cn',
+        referer: 'https://juejin.cn/',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({ id_type: 2, client_type: 2608, sort_type: 200, cursor: '0', limit: 20 })
+    });
+    const rows = Array.isArray(body?.data) ? body.data : [];
+    const list = rows.map(row => {
+      const item = row?.item_info || row?.item || row || {};
+      const article = item?.article_info || row?.article_info || {};
+      return {
+        id: article?.article_id || item?.article_id || row?.article_id,
+        title: article?.title || item?.title || row?.title,
+        url: article?.article_id || item?.article_id || row?.article_id
+          ? `https://juejin.cn/post/${article?.article_id || item?.article_id || row?.article_id}` : '',
+        hot: article?.view_count ?? item?.view_count,
+        engagement: sumPresentMetrics(
+          Object.fromEntries(['digg_count', 'comment_count', 'collect_count', 'share_count']
+            .map(key => [key, article?.[key] ?? item?.[key]])),
+          ['digg_count', 'comment_count', 'collect_count', 'share_count']
+        ),
+        author: item?.author_user_info?.user_name || row?.author_user_info?.user_name,
+        _trendRadarMetricPaths: { heat: 'article_info.view_count', engagement: 'digg_count+comment_count+collect_count+share_count' }
+      };
+    }).filter(row => row.id && row.title);
+    if (!list.length) throw new Error(`Juejin direct response empty (err_no ${body?.err_no ?? 'unknown'})`);
+    return { body: { title: '稀土掘金' }, upstream, list };
+  }
+
+  if (sourceId === '36kr') {
+    const gateway = 'https://gateway.36kr.com/api/mis/nav/home/nav/rank/hot';
+    try {
+      const { body } = await fetchJson(gateway, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', referer: 'https://www.36kr.com/' },
+        body: JSON.stringify({ partner_id: 'web', param: { siteId: 1, platformId: 2 } })
+      });
+      const list = (Array.isArray(body?.data?.hotRankList) ? body.data.hotRankList : []).map(row => {
+        const material = row?.templateMaterial || row || {};
+        return {
+          id: row?.itemId || material?.itemId,
+          title: material?.widgetTitle || row?.title,
+          url: row?.itemId ? `https://36kr.com/p/${row.itemId}` : '',
+          hot: metricOrNull(material?.statRead),
+          engagement: sumPresentMetrics(material, ['statCollect', 'statComment', 'statPraise']),
+          author: material?.authorName,
+          _trendRadarMetricPaths: { heat: 'templateMaterial.statRead', engagement: 'statCollect+statComment+statPraise' }
+        };
+      }).filter(row => row.id && row.title);
+      if (list.length) return { body: { title: '36氪' }, upstream: gateway, list };
+    } catch {}
+
+    const endpoints = [
+      'https://www.36kr.com/feed',
+      'https://www.36kr.com/feed-article',
+      'https://www.36kr.com/feed-newsflash',
+      'https://www.36kr.com/feed-moment'
+    ];
+    const errors = [];
+    for (const upstream of endpoints) {
+      try {
+        const res = await fetchResponse(upstream, {
+          headers: {
+            accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*',
+            referer: 'https://www.36kr.com/rss-center',
+            'accept-encoding': 'identity'
+          }
+        });
+        const xml = await res.text();
+        const blocks = xml.match(/<item(?:\s[^>]*)?>[\s\S]*?<\/item>/gi) || [];
+        const list = blocks.map((block, index) => {
+          const value = tag => {
+            const match = block.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`, 'i'));
+            return String(match?.[1] || '').replace(/<!\[CDATA\[|\]\]>/g, '').replace(/<[^>]+>/g, ' ').trim();
+          };
+          return { id: `${index}:${value('title')}`, title: value('title'), url: value('link'), desc: value('description') };
+        }).filter(row => row.title);
+        if (list.length) return { body: { title: '36氪' }, upstream, list };
+        errors.push(`${upstream}: empty RSS`);
+      } catch (error) {
+        errors.push(`${upstream}: ${String(error?.message || error)}`);
+      }
+    }
+    throw new Error(errors.join('; '));
+  }
+
   if (sourceId === 'weibo') {
     const { body } = await fetchJson('https://weibo.com/ajax/side/hotSearch', {
       headers: { referer: 'https://weibo.com/' }
@@ -219,7 +453,8 @@ async function fetchDirect(sourceId) {
         title: v.word || v.word_scheme,
         hot: v.num,
         timestamp: v.onboard_time,
-        url: `https://s.weibo.com/weibo?q=${encodeURIComponent(v.word || v.word_scheme || '')}`
+        url: `https://s.weibo.com/weibo?q=${encodeURIComponent(v.word || v.word_scheme || '')}`,
+        _trendRadarMetricPaths: { heat: 'adapter item.hot <- data.realtime[].num' }
       }))
     };
   }
@@ -239,8 +474,9 @@ async function fetchDirect(sourceId) {
           title: target.title,
           desc: target.excerpt,
           timestamp: target.created,
-          hot: numberFromUnknown(String(v.detail_text || '').split(' ')[0]) * 10000,
-          url: questionId ? `https://www.zhihu.com/question/${questionId}` : 'https://www.zhihu.com/hot'
+          hot: parsedMetricText(v.detail_text),
+          url: questionId ? `https://www.zhihu.com/question/${questionId}` : 'https://www.zhihu.com/hot',
+          _trendRadarMetricPaths: { heat: 'adapter item.hot <- data[].detail_text (parsed)' }
         };
       })
     };
@@ -256,8 +492,17 @@ export async function collectDailyHot(env, sourceId) {
   let body = null;
   let list = null;
   let upstream = null;
+  const directCapable = ['weibo', 'zhihu', 'douyin', 'v2ex', 'bilibili', 'juejin', '36kr'].includes(sourceId);
 
-  for (const base of upstreamBases(env)) {
+  if (directCapable) {
+    try {
+      ({ body, list, upstream } = await fetchDirect(sourceId));
+    } catch (err) {
+      errors.push(`direct: ${String(err?.message || err)}`);
+    }
+  }
+
+  for (const base of list ? [] : upstreamBases(env)) {
     try {
       ({ body, list, upstream } = await fetchFromUpstream(base, sourceId));
       break;
@@ -266,7 +511,7 @@ export async function collectDailyHot(env, sourceId) {
     }
   }
 
-  if (!list && ['weibo', 'zhihu', 'douyin'].includes(sourceId)) {
+  if (!list && directCapable) {
     try {
       ({ body, list, upstream } = await fetchDirect(sourceId));
     } catch (err) {
@@ -281,6 +526,7 @@ export async function collectDailyHot(env, sourceId) {
     const title = String(item.title || item.name || item.word || item.desc || '').trim();
     if (!title) return null;
     const url = item.url || item.mobileUrl || item.link || '';
+    const metrics = pickMetrics(item, sourceId);
     return {
       sourceId,
       sourceName: SOURCE_NAMES[sourceId] || body.title || sourceId,
@@ -291,12 +537,20 @@ export async function collectDailyHot(env, sourceId) {
       category: categoryFor(sourceId, title),
       language: 'zh',
       rank: i + 1,
-      heat: pickHeat(item),
-      engagement: pickEngagement(item),
-      publishedAt: item.timestamp ? new Date(Number(item.timestamp) * (Number(item.timestamp) < 1e12 ? 1000 : 1)).toISOString() : null,
+      heat: metrics.heat.value,
+      engagement: metrics.engagement.value,
+      publishedAt: normalizePublishedAt(item.timestamp),
       capturedAt,
       fingerprint: fingerprintTitle(title),
-      raw: { ...item, trendRadarUpstream: upstream }
+    raw: {
+        ...Object.fromEntries(Object.entries(item).filter(([key]) => key !== '_trendRadarMetricPaths')),
+        trendRadarUpstream: upstream,
+        trendRadarMetrics: {
+          heat_path: metrics.heat.path,
+          engagement_path: metrics.engagement.path,
+          selection: 'first documented candidate; aliases are not combined'
+        }
+      }
     };
   }).filter(Boolean);
 }

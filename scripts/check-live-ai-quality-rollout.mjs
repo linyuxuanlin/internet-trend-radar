@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const DEFAULT_URL = 'https://internet-trend-radar.linyuxuanlin.workers.dev/api/ai-quality-rollout';
+const DEFAULT_URL = 'https://radar.wiki-power.com/api/ai-quality-rollout';
 const EXPECTED_MODEL = '@cf/meta/llama-3.1-8b-instruct-fast';
 const EXPECTED_SINCE = process.env.AI_QUALITY_ROLLOUT_AT || '2026-08-24T03:33:53.000Z';
 const MIN_ATTEMPTS = Number(process.env.AI_ROLLOUT_QUALITY_MIN_ATTEMPTS || 5);

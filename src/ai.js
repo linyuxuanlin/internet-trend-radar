@@ -1,4 +1,5 @@
 import { safeJsonParse } from './utils.js';
+import { currentSourcePredicate } from './source-health.js';
 
 function balancedJsonObject(text) {
   const source = String(text || '');
@@ -165,6 +166,23 @@ export function isStoredAIValid(topic) {
   return opportunities.every(o => String(o?.idea || '').trim() && String(o?.rationale || '').trim());
 }
 
+export function isStoredAIUsable(topic, maxAgeHours = 6, now = Date.now()) {
+  if (!isStoredAIValid(topic)) return false;
+  const updatedAt = Date.parse(topic.ai_updated_at || '');
+  if (!Number.isFinite(updatedAt)) return false;
+  const ageMs = now - updatedAt;
+  const maxAgeMs = Math.max(1, Number(maxAgeHours || 6)) * 3600000;
+  return ageMs >= -5 * 60 * 1000 && ageMs <= maxAgeMs;
+}
+
+export function hasCurrentEvidence(topic, evidence = []) {
+  const expectedSources = Math.max(1, Number(topic?.source_count || 1));
+  const sourceIds = new Set((Array.isArray(evidence) ? evidence : [])
+    .map(item => String(item?.source_id || '').trim())
+    .filter(Boolean));
+  return sourceIds.size >= expectedSources;
+}
+
 function normalizeAnalysis(parsed, model, topicTitle) {
   if (!parsed || typeof parsed !== 'object') return { analysis: null, failureReason: 'invalid-json' };
   const summary = String(parsed.summary || '').trim();
@@ -228,15 +246,15 @@ summary 即使提到主题，也必须补充至少一个证据支持的新事实
 
 主题：${topic.canonical_title}
 分类：${topic.category}
-综合热度：${topic.current_score}
+趋势指数（派生指标，不是平台原始热度）：${topic.current_score}
 突破指数：${topic.breakout_score}
 来源数：${topic.source_count}
-证据：${evidence.map(x => `${x.source_id} #${x.rank || '-'} ${x.title}`).join('\n')}
+证据：${evidence.map(x => `${x.source_id} #${x.rank || '-'} ${x.title}；source_kind=${x.source_kind || '未声明'}；原始 heat=${x.raw_heat ?? '未提供'}；engagement=${x.raw_engagement ?? '未提供'}；实际字段=${x.heat_metric_path || '未记录'} / ${x.engagement_metric_path || '未记录'}；指标定义=${x.metric_definition || '未声明'}；upstream=${x.upstream || '未记录'}；采集时间=${x.captured_at || '-'}`).join('\n')}
 
 只输出 JSON：
 {"summary":"发生了什么，说明事件本质而不是标题改写","why_now":"为什么现在发生，引用可观察信号（时间、来源、热度变化等）","opportunities":[{"type":"内容|工具|服务|电商|投资观察","idea":"具体谁可以做什么","rationale":"为什么存在需求和验证路径","difficulty":"低|中|高","time_to_market":"当天|1-3天|1周+","confidence":0}],"risks":"主要风险和如何验证"}
 
-禁止：值得关注、热度很高、前景广阔等空泛表达。`;
+禁止：把趋势指数当成平台热度；禁止跨平台直接比较原始热度；禁止使用证据中没有出现的数字、日期、来源、产品事实或增长结论；证据没有提供时必须明确说“未提供”；禁止值得关注、热度很高、前景广阔等空泛表达。`;
 }
 
 async function runModel(env, model, topic, evidence, { structured = false } = {}) {
@@ -306,6 +324,9 @@ async function runStructuredFallback(env, topic, evidence, primary, primaryFailu
 }
 
 export async function analyzeTopicDetailed(env, topic, evidence) {
+  if (!hasCurrentEvidence(topic, evidence)) {
+    return { analysis: null, failureReason: 'no-current-evidence', rawText: '', model: null, attemptTrace: [] };
+  }
   if (!env.AI) return { analysis: null, failureReason: 'missing-ai-binding', rawText: '', model: null, attemptTrace: [] };
   const model = env.AI_MODEL || '@cf/zai-org/glm-4.7-flash';
   try {
@@ -435,7 +456,37 @@ export async function enrichTopTopics(env, options = {}) {
   let failed = 0;
   const failureReasons = {};
   for (const topic of results) {
-    const { results: evidence = [] } = await env.DB.prepare(`SELECT source_id,title,url,rank,captured_at FROM topic_sources WHERE topic_id=? ORDER BY captured_at DESC LIMIT 12`).bind(topic.id).all();
+    const { results: evidence = [] } = await env.DB.prepare(`
+      SELECT ts.source_id,ts.title,ts.url,ts.rank,ts.captured_at,
+             CASE
+               WHEN r.id IS NULL THEN s.kind
+               WHEN ts.source_id='xiaohongshu' OR json_extract(r.raw_json,'$.trendRadarUpstream') LIKE 'xiaohongshu-mcp:%' THEN 'external-bridge'
+               WHEN json_extract(r.raw_json,'$.trendRadarUpstream') LIKE '%api-hot.imsyy.top%' OR json_extract(r.raw_json,'$.trendRadarUpstream') LIKE '%api.guole.fun%' THEN 'aggregator-fallback'
+               WHEN json_extract(r.raw_json,'$.trendRadarUpstream') LIKE '%aa1.cn%' OR json_extract(r.raw_json,'$.trendRadarUpstream') LIKE '%luochen.sbs%' OR json_extract(r.raw_json,'$.trendRadarUpstream') LIKE '%fanyia.cn%' THEN 'mirror-fallback'
+               WHEN ts.source_id='36kr' AND json_extract(r.raw_json,'$.trendRadarUpstream') LIKE 'https://www.36kr.com/feed%' THEN 'official-rss'
+               WHEN ts.source_id IN ('hackernews','github','weibo','zhihu','v2ex','juejin','36kr','bilibili') THEN 'official-api'
+               ELSE 'source-api'
+             END AS source_kind,
+             r.heat AS raw_heat,r.engagement AS raw_engagement,
+             s.metadata_json AS metric_definition,
+             json_extract(r.raw_json, '$.trendRadarUpstream') AS upstream,
+             json_extract(r.raw_json, '$.trendRadarMetrics.heat_path') AS heat_metric_path,
+             json_extract(r.raw_json, '$.trendRadarMetrics.engagement_path') AS engagement_metric_path
+        FROM topic_sources ts
+        JOIN sources active_source ON active_source.id = ts.source_id
+         AND ${currentSourcePredicate('active_source')}
+        JOIN sources s ON s.id = ts.source_id
+        LEFT JOIN raw_items r ON r.source_id=ts.source_id
+          AND r.external_id=ts.external_id AND r.captured_at=ts.captured_at
+       WHERE ts.topic_id=?
+         AND julianday(ts.captured_at) >= julianday('now','-24 hours')
+       ORDER BY ts.captured_at DESC LIMIT 12
+    `).bind(topic.id).all();
+    if (!hasCurrentEvidence(topic, evidence)) {
+      failed++;
+      failureReasons['no-current-evidence'] = (failureReasons['no-current-evidence'] || 0) + 1;
+      continue;
+    }
     const result = await analyzeTopicDetailed(env, topic, evidence);
     const attempts = Array.isArray(result.attemptTrace) && result.attemptTrace.length ? result.attemptTrace : [asAttempt(result)];
     for (const attempt of attempts) await recordAttempt(env, topic.id, attempt.model, attempt);

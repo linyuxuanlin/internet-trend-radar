@@ -20,6 +20,8 @@ function usableAI(topic) {
   if (!summary || !why || ideas.length < 1) return false;
   if (summary.includes('正在进入活跃讨论区间，可结合来源扩散和热度增速判断是否形成持续趋势')) return false;
   if (why.includes('当前综合热度') && why.includes('突破指数') && why.includes('覆盖')) return false;
+  const signals = Array.isArray(topic.raw_signals) ? topic.raw_signals : [];
+  if (!signals.length || signals.some(signal => !signal?.source_id || !signal?.upstream || !signal?.latest_captured_at)) return false;
   return ideas.every(i => String(i.idea || '').trim() && String(i.rationale || '').trim());
 }
 
@@ -32,9 +34,10 @@ const opportunities = topics.map(t => ({
   title: t.canonical_title,
   evidence: [
     `${t.source_count || 0} 个真实来源覆盖`,
-    `综合热度 ${Math.round(t.current_score || 0)}`,
+    `趋势指数 ${Math.round(t.current_score || 0)}（派生指标）`,
     `突破指数 ${Math.round(t.breakout_score || 0)}`
   ],
+  provenance: Array.isArray(t.raw_signals) ? t.raw_signals : [],
   analysis: {
     summary: t.ai_summary,
     why_now: t.ai_why_now,
@@ -46,6 +49,7 @@ const opportunities = topics.map(t => ({
 const payload = {
   generatedAt: dashboard.generatedAt || new Date().toISOString(),
   buildSha,
+  source: 'pages-static',
   status: opportunities.length ? 'healthy' : 'degraded',
   provider: dashboard.ai?.provider || 'cloudflare-workers-ai',
   opportunities

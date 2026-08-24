@@ -35,6 +35,20 @@ jobs:
           node scripts/validate-production-preview-guard.mjs
           node scripts/validate-dailyhot-fallback.mjs
           node scripts/validate-dailyhot-live.mjs
+          node scripts/validate-provenance-integrity.mjs
+          node scripts/validate-capture-time-window.mjs
+          node scripts/validate-source-metric-semantics.mjs
+          node scripts/validate-published-time-normalization.mjs
+          node scripts/validate-upstream-metric-nullability.mjs
+          node scripts/validate-data-quality-null-semantics.mjs
+          node scripts/validate-disabled-source-isolation.mjs
+          node scripts/validate-evidence-freshness.mjs
+          node scripts/validate-email-freshness.mjs
+          node scripts/validate-upstream-kind-labels.mjs
+          node scripts/validate-score-integrity.mjs
+          node scripts/validate-source-freshness-scoring.mjs
+          node scripts/validate-frontend-freshness.mjs
+          node scripts/validate-static-asset-freshness.mjs
 
       - name: Probe live Worker AI diagnostics
         timeout-minutes: 1
@@ -118,8 +132,11 @@ jobs:
         run: |
           cp public/index.html /tmp/index.html
           node scripts/patch-pages-index.mjs
+          node scripts/patch-ai-opportunities-panel.mjs
           grep -q "snapshot stale" public/index.html
           grep -q "3\*60\*60\*1000" public/index.html
+          grep -q "https://radar.wiki-power.com/api/dashboard" public/index.html
+          grep -q 'id="ai-opportunities-panel"' public/index.html
           python3 - <<'PY' > /tmp/frontend-pages.js
           from pathlib import Path
           import re
@@ -152,6 +169,8 @@ jobs:
           node scripts/enrich-social-hotlists.mjs
           node scripts/probe-degraded-sources.mjs
           node scripts/normalize-source-summaries.mjs
+          node scripts/normalize-static-provenance.mjs
+          node scripts/validate-static-provenance.mjs
           node scripts/enrich-ai-opportunities.mjs
           BUILD_SHA="$GITHUB_SHA" node scripts/stamp-build-provenance.mjs
           node scripts/write-opportunities.mjs

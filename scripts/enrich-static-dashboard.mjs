@@ -79,8 +79,8 @@ function parseFeed(xml) {
   })).filter(row => row.title);
 }
 
-function makeTopic({ sourceId, title, url = '', summary = '', rank, total, heat = 0, engagement = 0, capturedAt }) {
-  const score = scoreItem(rank, total, heat, engagement);
+function makeTopic({ sourceId, title, url = '', summary = '', rank, total, heat = null, engagement = null, capturedAt, upstream = null }) {
+  const score = scoreItem(rank, total, 0, 0);
   const breakout = clamp(score * (rank <= 5 ? 0.92 : rank <= 10 ? 0.76 : 0.58));
   const id = fingerprintTitle(title);
   return {
@@ -96,7 +96,8 @@ function makeTopic({ sourceId, title, url = '', summary = '', rank, total, heat 
     source_count: 1,
     mention_count: 1,
     status: topicStatus(score, breakout),
-    ai_summary: summary || null,
+    source_summary: summary || null,
+    ai_summary: null,
     ai_why_now: null,
     opportunities: [],
     sources: [{
@@ -106,6 +107,23 @@ function makeTopic({ sourceId, title, url = '', summary = '', rank, total, heat 
       title,
       rank,
       captured_at: capturedAt
+    }],
+    raw_signals: [{
+      source_id: sourceId,
+      source_kind: sourceId === 'sspai' ? 'official-rss' : 'official-api',
+      metric_definition: metricMetadata(sourceId),
+      raw_heat_max: heat === null || heat === undefined ? null : Number(heat),
+      raw_engagement_max: engagement === null || engagement === undefined ? null : Number(engagement),
+      raw_heat_latest: heat === null || heat === undefined ? null : Number(heat),
+      raw_engagement_latest: engagement === null || engagement === undefined ? null : Number(engagement),
+      best_rank: rank,
+      observations: 1,
+      latest_captured_at: capturedAt,
+      upstream,
+      metric_paths: sourceId === 'bilibili'
+        ? { heat: 'data.list[].stat.view', engagement: 'stat.like+reply+coin+favorite+share+danmaku' }
+        : { heat: null, engagement: null },
+      units: 'source-native; not comparable across platforms'
     }]
   };
 }
@@ -180,7 +198,8 @@ async function enrichSspai(dashboard, capturedAt) {
       summary: row.description ? row.description.slice(0, 180) : '少数派 RSS',
       rank: i + 1,
       total: rows.length,
-      capturedAt
+      capturedAt,
+      upstream: 'https://sspai.com/feed'
     }));
     dashboard.topics = mergeTopics(dashboard.topics, topics);
     setSource(dashboard, {
@@ -191,7 +210,8 @@ async function enrichSspai(dashboard, capturedAt) {
       last_success_at: capturedAt,
       last_error_at: null,
       last_error: null,
-      last_item_count: topics.length
+      last_item_count: topics.length,
+      latest_upstream: 'https://sspai.com/feed'
     });
     console.log(`OK sspai: ${topics.length}; dashboard topics=${dashboard.topics.length}`);
   } catch (error) {
@@ -219,9 +239,13 @@ async function enrichBilibili(dashboard, capturedAt) {
     if (!rows.length) throw new Error('popular API returned no videos');
     const topics = rows.map((item, i) => {
       const stat = item?.stat || {};
-      const heat = Number(stat.view || 0);
-      const engagement = ['like', 'reply', 'coin', 'favorite', 'share', 'danmaku']
-        .reduce((sum, key) => sum + Number(stat[key] || 0), 0);
+      const heat = stat.view === null || stat.view === undefined ? null : Number(stat.view);
+      const presentEngagement = ['like', 'reply', 'coin', 'favorite', 'share', 'danmaku']
+        .map(key => stat[key])
+        .filter(value => value !== null && value !== undefined && value !== '')
+        .map(Number)
+        .filter(value => Number.isFinite(value) && value >= 0);
+      const engagement = presentEngagement.length ? presentEngagement.reduce((sum, value) => sum + value, 0) : null;
       const owner = String(item?.owner?.name || '').trim();
       const tname = String(item?.tname || '').trim();
       return makeTopic({
@@ -233,7 +257,8 @@ async function enrichBilibili(dashboard, capturedAt) {
         total: rows.length,
         heat,
         engagement,
-        capturedAt
+        capturedAt,
+        upstream: 'https://api.bilibili.com/x/web-interface/popular?ps=20&pn=1'
       });
     }).filter(topic => topic.canonical_title);
     if (!topics.length) throw new Error('popular API returned no usable titles');
@@ -246,7 +271,8 @@ async function enrichBilibili(dashboard, capturedAt) {
       last_success_at: capturedAt,
       last_error_at: null,
       last_error: null,
-      last_item_count: topics.length
+      last_item_count: topics.length,
+      latest_upstream: 'https://api.bilibili.com/x/web-interface/popular?ps=20&pn=1'
     });
     console.log(`OK bilibili: ${topics.length}; dashboard topics=${dashboard.topics.length}`);
   } catch (error) {
@@ -268,7 +294,7 @@ async function enrichBilibili(dashboard, capturedAt) {
 
 async function main() {
   const dashboard = JSON.parse(await readFile(DASHBOARD, 'utf8'));
-  const capturedAt = dashboard.generatedAt || nowIso;
+  const capturedAt = nowIso;
 
   await enrichSspai(dashboard, capturedAt);
   await enrichBilibili(dashboard, capturedAt);

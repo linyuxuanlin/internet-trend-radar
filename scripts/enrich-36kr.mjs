@@ -95,7 +95,8 @@ function makeTopic(row, rank, total, capturedAt) {
     source_count: 1,
     mention_count: 1,
     status: topicStatus(score, breakout),
-    ai_summary: [`36氪 · ${row.label}`, row.description ? row.description.slice(0, 140) : ''].filter(Boolean).join(' · '),
+    source_summary: [`36氪 · ${row.label}`, row.description ? row.description.slice(0, 140) : ''].filter(Boolean).join(' · '),
+    ai_summary: null,
     ai_why_now: null,
     opportunities: [],
     sources: [{
@@ -104,7 +105,8 @@ function makeTopic(row, rank, total, capturedAt) {
       url: row.link,
       title: row.title,
       rank,
-      captured_at: capturedAt
+      captured_at: capturedAt,
+      upstream: row.feedUrl || null
     }]
   };
 }
@@ -149,7 +151,7 @@ function categorySummary(topics) {
 
 async function main() {
   const dashboard = JSON.parse(await readFile(DASHBOARD, 'utf8'));
-  const capturedAt = dashboard.generatedAt || nowIso;
+  const capturedAt = nowIso;
   const collected = [];
   const errors = [];
   const seenFeedUrls = new Set();
@@ -161,7 +163,7 @@ async function main() {
       const xml = await fetchText(url);
       const rows = parseFeed(xml);
       if (!rows.length) throw new Error(`parsed zero entries; prefix=${JSON.stringify(xml.slice(0, 120))}`);
-      for (const row of rows.slice(0, 20)) collected.push({ ...row, label });
+      for (const row of rows.slice(0, 20)) collected.push({ ...row, label, feedUrl: url });
       if (collected.length >= 30) break;
     } catch (error) {
       errors.push(`${url}: ${String(error?.message || error).slice(0, 180)}`);
@@ -193,7 +195,9 @@ async function main() {
   dashboard.categories = categorySummary(dashboard.topics);
   setSource(dashboard, {
     id: '36kr', name: '36氪', region: 'cn', kind: 'official-rss',
-    last_success_at: capturedAt, last_error_at: null, last_error: null, last_item_count: topics.length
+    last_success_at: capturedAt, last_error_at: null, last_error: null, last_item_count: topics.length,
+    latest_upstream: rows[0]?.feedUrl || null,
+    latest_upstreams: [...new Set(rows.map(row => row.feedUrl).filter(Boolean))]
   });
   await writeFile(DASHBOARD, JSON.stringify(dashboard, null, 2) + '\n', 'utf8');
   console.log(`OK 36kr: ${topics.length}; dashboard topics=${dashboard.topics.length}`);

@@ -8,7 +8,10 @@ if (html.includes('id="ai-opportunities-panel"')) {
   process.exit(0);
 }
 
-const marker = '<main>';
+// The page is intentionally a simple static document and does not use a
+// semantic <main> wrapper. Insert after the contract panel so the patch works
+// from the committed source as well as from an already patched Pages build.
+const marker = '<section class="content-grid">';
 if (!html.includes(marker)) throw new Error('cannot find page main container');
 
 const panel = `

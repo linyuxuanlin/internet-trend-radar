@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-const DEFAULT_BASE_URL = 'https://internet-trend-radar.linyuxuanlin.workers.dev';
-const EXPECTED_DAILY_BUDGET = 24;
+const DEFAULT_BASE_URL = 'https://radar.wiki-power.com';
+const EXPECTED_DAILY_BUDGET = 240;
 
 export function validateBudgetPayload(payload, now = new Date()) {
   if (!payload || typeof payload !== 'object') throw new Error('AI budget response must be an object');
@@ -170,12 +170,12 @@ function runSelfTest() {
     ok: true,
     generatedAt: now.toISOString(),
     timezone: 'UTC',
-    daily_budget: 24,
+    daily_budget: 240,
     attempts_today: 6,
-    cumulative_budget: 8,
-    remaining_headroom: 2,
-    remaining_daily: 18,
-    topic_headroom: 2,
+    cumulative_budget: 80,
+    remaining_headroom: 74,
+    remaining_daily: 234,
+    topic_headroom: 74,
     max_calls_per_topic: 1,
     paced: false,
     exhausted: false,
@@ -195,9 +195,9 @@ function runSelfTest() {
 
   const pacedPayload = {
     ...base,
-    attempts_today: 8,
+    attempts_today: 80,
     remaining_headroom: 0,
-    remaining_daily: 16,
+    remaining_daily: 160,
     topic_headroom: 0,
     paced: true,
     next_release_at: '2026-08-23T08:00:00.000Z'

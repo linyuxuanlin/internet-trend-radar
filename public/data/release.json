@@ -1,0 +1,42 @@
+{
+  "buildSha": "1e0758341652c1e3992b9d8669746273aef7e01c",
+  "generatedAt": "2026-08-24T18:01:11.793Z",
+  "preview": false,
+  "ready": true,
+  "topics": 38,
+  "healthySources": 2,
+  "directCnSources": 0,
+  "socialUpstreams": {
+    "weibo": {
+      "provider": null,
+      "stage": "failed",
+      "upstream": null,
+      "fallbackDepth": null,
+      "available": false
+    },
+    "zhihu": {
+      "provider": null,
+      "stage": "failed",
+      "upstream": null,
+      "fallbackDepth": null,
+      "available": false
+    },
+    "douyin": {
+      "provider": null,
+      "stage": "failed",
+      "upstream": null,
+      "fallbackDepth": null,
+      "available": false
+    }
+  },
+  "fallbackSocialSources": [
+    "weibo",
+    "zhihu",
+    "douyin"
+  ],
+  "socialFallbackMaxDepth": 0,
+  "socialFallbackSeverity": "unavailable",
+  "aiMatched": 0,
+  "opportunitiesStatus": "degraded",
+  "opportunities": 0
+}

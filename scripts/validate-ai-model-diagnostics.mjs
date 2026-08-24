@@ -13,12 +13,18 @@ const db = {
       bind() { return this; },
       async run() { return { success: true }; },
       async first() {
+        if (sql.includes("SUM(CASE WHEN json_extract(raw_json,'$.trendRadarUpstream')")) return {
+          missing_upstream: 0, invalid_upstream: 0, missing_heat: 0, missing_engagement: 0,
+          heat_path_violations: 0, engagement_path_violations: 0
+        };
         if (sql === 'SELECT COUNT(*) as count FROM raw_items') return { count: 500 };
         if (sql === 'SELECT COUNT(*) as count FROM topics') return { count: 100 };
         if (sql === 'SELECT COUNT(*) as count FROM sources') return { count: 15 };
         if (sql.includes('FROM sources WHERE last_success_at IS NOT NULL')) return { count: 14 };
         if (sql.includes('FROM sources WHERE last_error_at IS NOT NULL')) return { count: 1 };
+        if (sql.includes('FROM sources WHERE enabled=1')) return { count: 14 };
         if (sql.includes('SELECT MAX(last_success_at)')) return { value: now };
+        if (sql.includes('SELECT MAX(CASE WHEN enabled=1')) return { value: now };
         if (sql.includes('current_score >= 45') && !sql.includes('ai_updated_at') && !sql.includes('length(trim')) return { count: 40 };
         if (sql.includes('current_score >= 45 AND ai_updated_at IS NOT NULL') && !sql.includes('length(trim') && !sql.includes('julianday(ai_updated_at)')) return { count: 30 };
         if (sql.includes('length(trim(COALESCE(ai_summary')) return { count: 12 };
@@ -29,6 +35,15 @@ const db = {
       async all() {
         if (sql.includes('sqlite_master')) return { results: requiredTables.map(name => ({ name })) };
         if (sql.includes('SELECT id,last_error,last_error_at FROM sources')) return { results: [] };
+        if (sql.includes('FROM sources s')) return { results: [{
+          id: 'v2ex', name: 'V2EX', region: 'cn', kind: 'official-api', enabled: 1, metadata_json: '{}',
+          raw_items: 20, missing_heat: 0, missing_engagement: 0, zero_heat: 0, zero_engagement: 0,
+          contract_heat_violations: 0, contract_engagement_violations: 0,
+          definition_heat_path_violations: 0, definition_engagement_path_violations: 0,
+          heat_path_violations: 0, engagement_path_violations: 0, upstream_count: 1,
+          latest_captured_at: now
+        }] };
+        if (sql.includes("SUM(CASE WHEN json_extract(raw_json,'$.trendRadarUpstream')")) return { results: [] };
         const oneHour = sql.includes("julianday('now','-1 hours')");
         if (sql.includes('GROUP BY model, reason')) {
           if (oneHour) return { results: [

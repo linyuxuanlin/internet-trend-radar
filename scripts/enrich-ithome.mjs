@@ -104,7 +104,8 @@ function makeTopic(row, total, capturedAt) {
     source_count: 1,
     mention_count: 1,
     status: topicStatus(score, breakout),
-    ai_summary: row.description ? `IT之家 · ${row.description.slice(0, 140)}` : 'IT之家 RSS 最新资讯',
+    source_summary: row.description ? `IT之家 · ${row.description.slice(0, 140)}` : 'IT之家 RSS 最新资讯',
+    ai_summary: null,
     ai_why_now: null,
     opportunities: [],
     sources: [{
@@ -158,7 +159,7 @@ function categorySummary(topics) {
 }
 
 const dashboard = JSON.parse(await readFile(DASHBOARD, 'utf8'));
-const capturedAt = dashboard.generatedAt || nowIso;
+const capturedAt = nowIso;
 
 try {
   const xml = await fetchFeed();
@@ -180,7 +181,8 @@ try {
     last_success_at: capturedAt,
     last_error_at: null,
     last_error: null,
-    last_item_count: topics.length
+    last_item_count: topics.length,
+    latest_upstream: 'https://www.ithome.com/rss/'
   });
   await writeFile(DASHBOARD, JSON.stringify(dashboard, null, 2) + '\n', 'utf8');
   console.log(`OK ithome: ${topics.length} fresh RSS items; dashboard topics=${dashboard.topics.length}`);

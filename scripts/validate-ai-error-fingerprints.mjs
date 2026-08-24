@@ -9,7 +9,7 @@ const topic = {
   category: '科技',
   current_score: 88,
   breakout_score: 80,
-  source_count: 2
+  source_count: 1
 };
 const evidence = [{ source_id: 'v2ex', title: '真实趋势错误指纹出现新消息', rank: 1 }];
 

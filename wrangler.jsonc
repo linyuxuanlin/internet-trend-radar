@@ -2,12 +2,20 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "internet-trend-radar",
   "main": "src/worker.js",
+  "workers_dev": true,
+  "preview_urls": false,
   "compatibility_date": "2026-08-20",
   "observability": { "enabled": true },
+  "routes": [
+    {
+      "pattern": "radar.wiki-power.com",
+      "custom_domain": true
+    }
+  ],
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": true
   },
   "d1_databases": [
     {
@@ -17,7 +25,7 @@
   ],
   "ai": { "binding": "AI" },
   "triggers": {
-    "crons": ["*/30 * * * *", "5 0 * * *"]
+    "crons": ["*/30 * * * *", "0 1 * * *"]
   },
   "vars": {
     "DAILYHOT_BASE": "https://api-hot.imsyy.top",
@@ -25,11 +33,11 @@
     "AI_FALLBACK_MODEL": "@cf/meta/llama-3.1-8b-instruct-fast",
     "AI_DISABLE_FALLBACK": "1",
     "AI_TOP_N": "10",
-    "AI_DAILY_MODEL_CALL_BUDGET": "24",
+    "AI_DAILY_MODEL_CALL_BUDGET": "240",
     "AI_RETRY_MINUTES": "30",
     "AI_REFRESH_HOURS": "6",
     "SITE_NAME": "Trend Radar",
-    "PUBLIC_BASE_URL": "",
-    "COLLECTOR_SOURCES": "weibo,zhihu,bilibili,baidu,douyin,toutiao,36kr,juejin,hupu,v2ex"
+    "PUBLIC_BASE_URL": "https://radar.wiki-power.com",
+    "COLLECTOR_SOURCES": "weibo,zhihu,36kr,douyin,v2ex,juejin"
   }
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const DEFAULT_URL = 'https://internet-trend-radar.linyuxuanlin.workers.dev/api/debug';
+const DEFAULT_URL = 'https://radar.wiki-power.com/api/debug';
 const EXPECTED_MODEL = '@cf/meta/llama-3.1-8b-instruct-fast';
 const MIN_ATTEMPTS = Number(process.env.AI_OUTPUT_QUALITY_MIN_ATTEMPTS || 5);
 const MIN_SUCCESS_RATE = Number(process.env.AI_OUTPUT_QUALITY_MIN_SUCCESS_RATE || 50);

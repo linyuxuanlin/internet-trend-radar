@@ -8,7 +8,8 @@ const HEALTH_URL = String(process.env.HEALTH_URL || '').trim();
 const FETCH_TIMEOUT_MS = Number(process.env.DASHBOARD_FETCH_TIMEOUT_MS || 15 * 1000);
 const MAX_AGE_MS = Number(process.env.MAX_SNAPSHOT_AGE_MS || 10 * 60 * 1000);
 const EXPECTED_BUILD_SHA = String(process.env.EXPECTED_BUILD_SHA || '').trim().toLowerCase();
-const REQUIRED_DIRECT_CN = String(process.env.REQUIRED_DIRECT_CN || 'v2ex,sspai,bilibili').split(',').map(value => value.trim()).filter(Boolean);
+const configuredRequiredDirectCn = process.env.REQUIRED_DIRECT_CN;
+const REQUIRED_DIRECT_CN = String(configuredRequiredDirectCn === undefined ? 'v2ex,sspai,bilibili' : configuredRequiredDirectCn).split(',').map(value => value.trim()).filter(Boolean);
 
 function fail(message) { console.error(`HEALTH_MANIFEST_GATE_FAIL ${message}`); process.exitCode = 1; }
 async function loadJson(localUrl, remoteUrl, label) {
@@ -75,6 +76,10 @@ for (const source of sources) {
   if (row.lastSuccessAt !== (source?.last_success_at || null)) fail(`source ${source?.id} lastSuccessAt mismatch`);
   if (row.lastErrorAt !== (source?.last_error_at || null)) fail(`source ${source?.id} lastErrorAt mismatch`);
   if (row.lastError !== (source?.last_error || null)) fail(`source ${source?.id} lastError mismatch`);
+  const expectedUpstream = source?.upstream || source?.latest_upstream || null;
+  if (row.upstream !== expectedUpstream) fail(`source ${source?.id} upstream mismatch: health=${row.upstream} expected=${expectedUpstream}`);
+  const expectedUpstreams = Array.isArray(source?.latest_upstreams) ? source.latest_upstreams : null;
+  if (JSON.stringify(row.upstreams ?? null) !== JSON.stringify(expectedUpstreams)) fail(`source ${source?.id} upstreams mismatch`);
   if (row.lastErrorType !== failure.type) fail(`source ${source?.id} lastErrorType mismatch: health=${row.lastErrorType} expected=${failure.type}`);
   if (row.lastErrorCode !== failure.code) fail(`source ${source?.id} lastErrorCode mismatch: health=${row.lastErrorCode} expected=${failure.code}`);
   if (!expectedHealthy && row.lastError && !row.lastErrorType) fail(`source ${source?.id} degraded failure must be classified`);

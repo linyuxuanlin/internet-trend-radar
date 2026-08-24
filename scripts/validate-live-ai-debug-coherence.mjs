@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const DEFAULT_BASE_URL = 'https://internet-trend-radar.linyuxuanlin.workers.dev';
+const DEFAULT_BASE_URL = 'https://radar.wiki-power.com';
 
 function assertObject(value, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label} must be an object`);

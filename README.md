@@ -1,18 +1,21 @@
 # Internet Trend Radar MVP
 
-跨平台趋势追踪器 MVP：覆盖中文互联网与全球开发者/科技数据源，每 30 分钟采集一次，D1 保存时间序列，网页实时展示热度、Breakout、类别和来源健康，并用 Workers AI 生成「为什么火」和可行动机会；支持每日邮件。
+跨平台趋势追踪器 MVP：采集中文互联网与全球开发者/科技数据源，每 30 分钟保存一次真实原始快照，网页展示来源原生指标、派生趋势指数、Breakout 和来源健康，并在质量门禁通过时用 Workers AI 生成「为什么火」和可行动机会；支持每日邮件。
 
 ## MVP 已包含
 
-- 中文源：微博、知乎、B站、百度、抖音、今日头条、36氪、掘金、虎扑、V2EX（MVP 通过 DailyHotApi 快速覆盖）
-- 全球源：Hacker News 官方 Firebase API、GitHub Search API
+- 当前 Worker 启用的中文源：微博官方热搜接口、知乎官方热榜接口、抖音官方接口/明确标注的镜像 fallback、36氪 Gateway 热榜、掘金推荐接口、V2EX 官方 hot topics API
+- 当前 Worker 停用的来源：B站、百度、今日头条、虎扑；它们仍保留指标定义和历史数据，但不会被计入当前健康来源
+- 全球源：Hacker News 官方 Firebase API、GitHub Search API（按近 36 小时 UTC 日期边界筛选新仓库并按 Star 排序；不是 GitHub Trending）
 - 小红书：External Collector Bridge，供需要登录态/浏览器环境的 `xiaohongshu-mcp` 独立运行后推送数据
 - D1：raw snapshots / topics / topic snapshots / evidence / subscribers / digests
-- Trend Score：榜单位置 + 原始热度 + engagement + cross-source + persistence
+- 原始字段：平台原生 heat/engagement、榜单 rank、采集时间和 `raw.trendRadarUpstream`；未提供的指标保存为 NULL，不填充为 0
+- Trend Score：`rank_score×0.72 + heat_percentile×24 + engagement_percentile×18`，再加入 source weight、跨来源覆盖奖励和 persistence，并限制在 0–100；所有百分位只在来源内计算，它是派生趋势指数，不是任何平台的原始热度
 - Breakout Score：上一轮分数变化 + 新来源增长 + mentions 增长 + novelty
-- AI：Workers AI，默认 `@cf/zai-org/glm-4.7-flash`，输出 summary / why now / opportunities / risks
-- Web：实时榜单、24h 曲线、类别分布、Breakout、新兴趋势、源健康、主题证据详情、邮件订阅
-- Cron：每 30 分钟采集；每天 00:05 UTC（北京时间 08:05）发送摘要
+- AI：Workers AI，当前模型为 `@cf/meta/llama-3.1-8b-instruct-fast`；只有通过输出质量门禁的结果才进入页面、机会接口和邮件
+- Web：实时榜单、24h 曲线、类别分布、Breakout、新兴趋势、源健康、来源级最近 upstream、主题证据详情、邮件订阅
+- 入口语义：`https://radar.wiki-power.com` 和 `https://internet-trend-radar.linyuxuanlin.workers.dev` 都是实时 Worker/D1 入口；GitHub Pages 是静态发布入口，优先尝试实时 Worker，静态快照超过 3 小时会拒绝展示，避免把旧热度当成当前数据
+- Cron：每 30 分钟采集；每天 01:00 UTC（北京时间 09:00）发送摘要
 
 ## 小红书为什么使用 Bridge
 
@@ -34,13 +37,32 @@ Content-Type: application/json
       "author": "作者",
       "rank": 1,
       "heat": 12000,
-      "engagement": 18000
+      "engagement": 18000,
+      "raw": {
+        "trendRadarUpstream": "xiaohongshu-mcp:/api/v1/feeds/search"
+      }
     }
   ]
 }
 ```
 
-参考 `scripts/xhs_bridge_example.py`。同一种 Bridge 以后也可以接微信指数、淘宝/京东榜单以及其他需要登录、浏览器或独立运行时的数据源。
+参考 `scripts/xhs_bridge_example.py`。它支持把已登录的 `xiaohongshu-mcp` 搜索/Feed 结果以 JSON 数组从 stdin 或 `XHS_ITEMS_FILE` 传入，也支持通过 `XHS_MCP_URL` 直接调用本机 MCP HTTP API，再推送到正式域名：
+
+```bash
+export TREND_RADAR_URL=https://radar.wiki-power.com
+export INGEST_TOKEN=...
+python3 scripts/xhs_bridge_example.py < xhs-items.json
+```
+
+直接调用本机 MCP 搜索多个关键词：
+
+```bash
+export XHS_MCP_URL=http://127.0.0.1:18060
+export XHS_KEYWORDS=AI,科技,消费
+python3 scripts/xhs_bridge_example.py
+```
+
+`raw.trendRadarUpstream` 是所有数据入库前的强制 provenance 字段；缺失时 Worker 会拒绝该条目。MCP 工具连接和登录态必须运行在外部浏览器/Bridge 环境中，Cloudflare Worker 不保存小红书登录态。同一种 Bridge 也可以接微信指数、淘宝/京东榜单以及其他需要登录、浏览器或独立运行时的数据源。
 
 ## Cloudflare 部署
 
@@ -84,7 +106,7 @@ npm run db:migrate:remote
 ### 第一次真实采集
 
 ```bash
-curl -X POST https://YOUR_WORKER.workers.dev/api/admin/collect \
+curl -X POST https://internet-trend-radar.linyuxuanlin.workers.dev/api/admin/collect \
   -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
 ```
 
@@ -111,6 +133,8 @@ npx wrangler deploy --temporary
 
 ## 数据层原则
 
+完整的来源、字段映射和 fallback 说明见 [`docs/data-provenance.md`](docs/data-provenance.md)。
+
 MVP 允许先借助第三方聚合项目快速获得覆盖面，但长期不会把单一聚合 API 当作唯一数据源。每个平台都应逐步升级为独立 Source Adapter，并保留：
 
 - 原始快照
@@ -120,13 +144,13 @@ MVP 允许先借助第三方聚合项目快速获得覆盖面，但长期不会�
 - 错误与恢复状态
 - 平台独立归一化逻辑
 
-这样微博、小红书、Google、GitHub 等彼此完全不同的“热度”不会被简单粗暴地直接相加。
+这样微博、小红书、Hacker News、GitHub 等彼此完全不同的原始信号不会被直接相加。接口会同时保留每个来源的 `raw_heat_max`、`raw_engagement_max`、`best_rank`、最近采集时间和 upstream；这些数值只在各自平台单位内可解释，NULL 明确表示来源没有提供该指标。
 
 ## 下一阶段
 
 1. 语义/实体聚类：把不同平台对同一事件的不同标题真正归成一个 Topic
-2. source-specific normalization：按平台历史 percentile / z-score 归一化热度
-3. 真正接入小红书 MCP 并定时推送快照
+2. 继续扩展 source-specific normalization 的历史校准，但保持原始热度不跨平台直接比较
+3. 为小红书 Bridge 增加可靠的定时推送和失败告警
 4. 扩展微信指数、淘宝、京东、App Store、Steam、Google Trends、YouTube、Reddit、Product Hunt、Hugging Face 等源
 5. Opportunity Score：需求强度 × 增速 × 竞争程度 × 开发成本 × 变现路径
 6. 用户 Watchlist、专题订阅和突发提醒

@@ -1,4 +1,4 @@
-const DEFAULT_ENDPOINT = 'https://internet-trend-radar.linyuxuanlin.workers.dev/api/debug';
+const DEFAULT_ENDPOINT = 'https://radar.wiki-power.com/api/debug';
 const EXPECTED_MODEL = process.env.EXPECTED_AI_MODEL || '@cf/meta/llama-3.1-8b-instruct-fast';
 const RESET_RECOVERY_GRACE_MINUTES = Math.max(30, Number(process.env.AI_RESET_RECOVERY_GRACE_MINUTES || 75));
 

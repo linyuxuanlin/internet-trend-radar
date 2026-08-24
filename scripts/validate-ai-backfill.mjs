@@ -5,6 +5,11 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+let emptyEvidenceModelCalls = 0;
+const emptyEvidence = await analyzeTopicDetailed({ AI: { async run() { emptyEvidenceModelCalls++; } } }, { canonical_title: '没有证据的趋势', source_count: 1 }, []);
+assert(emptyEvidence.failureReason === 'no-current-evidence', `empty evidence reason=${emptyEvidence.failureReason}`);
+assert(emptyEvidenceModelCalls === 0, 'AI model must not run without current evidence');
+
 const goodSummary = '多个真实来源正在围绕同一事件集中报道，核心变化是产品能力从试验阶段进入可被普通用户直接使用的阶段。';
 const goodWhy = '过去数小时内不同来源同时出现相关条目，并且排名和覆盖面同步上升，说明讨论正在从单一社区扩散到更广泛受众。';
 const goodOpp = [{ idea: '面向具体用户做一个可在一天内验证需求的小工具', rationale: '先通过搜索和评论中的重复问题验证是否存在稳定痛点，再决定是否扩大投入' }];
@@ -14,7 +19,7 @@ assert(isStoredAIValid({ ai_summary: goodSummary, ai_why_now: goodWhy, ai_opport
 assert(!isStoredAIValid({ ai_summary: '当前热度较高，值得关注后续发展。', ai_why_now: goodWhy, ai_opportunities_json: JSON.stringify(goodOpp) }), 'low-value summary must fail public quality gate');
 
 {
-  const topic = { canonical_title: '某品牌发布新手机', category: '科技', current_score: 88, breakout_score: 80, source_count: 3 };
+  const topic = { canonical_title: '某品牌发布新手机', category: '科技', current_score: 88, breakout_score: 80, source_count: 1 };
   const evidence = [{ source_id: 'ithome', title: '某品牌发布新手机，首发自研影像芯片', rank: 1 }];
   const calls = [];
   const result = await analyzeTopicDetailed({
@@ -32,7 +37,7 @@ assert(!isStoredAIValid({ ai_summary: '当前热度较高，值得关注后续�
 }
 
 {
-  const topic = { canonical_title: '某品牌发布新手机', category: '科技', current_score: 88, breakout_score: 80, source_count: 3 };
+  const topic = { canonical_title: '某品牌发布新手机', category: '科技', current_score: 88, breakout_score: 80, source_count: 1 };
   const evidence = [{ source_id: 'ithome', title: '某品牌发布新手机', rank: 1 }];
   const result = await analyzeTopicDetailed({
     AI_MODEL: '@cf/meta/llama-3.1-8b-instruct-fast',
@@ -43,7 +48,7 @@ assert(!isStoredAIValid({ ai_summary: '当前热度较高，值得关注后续�
 }
 
 {
-  const topic = { canonical_title: '结构化解析测试', category: '科技', current_score: 88, breakout_score: 80, source_count: 3 };
+  const topic = { canonical_title: '结构化解析测试', category: '科技', current_score: 88, breakout_score: 80, source_count: 1 };
   const evidence = [{ source_id: 'v2ex', title: '结构化解析测试出现新进展', rank: 1 }];
   const fenced = `这里是结果：\n\`\`\`json\n${JSON.stringify(goodPayload)}\n\`\`\`\n以上。`;
   const result = await analyzeTopicDetailed({
@@ -61,7 +66,7 @@ function makeBackfillDb({ validModelOutput, fallbackValid = false, disableFallba
   const aiCalls = [];
   const topic = {
     id: 'topic-1', canonical_title: '测试真实趋势', category: '科技', current_score: 80, breakout_score: 75,
-    source_count: 3, ai_summary: null, ai_why_now: null, ai_opportunities_json: null, ai_updated_at: null
+    source_count: 1, ai_summary: null, ai_why_now: null, ai_opportunities_json: null, ai_updated_at: null
   };
   return {
     updates,
@@ -76,11 +81,14 @@ function makeBackfillDb({ validModelOutput, fallbackValid = false, disableFallba
           async all() { return { results: [topic] }; }
         };
       }
-      if (sql.includes('SELECT source_id,title,url,rank,captured_at FROM topic_sources')) {
+      if (sql.includes('FROM topic_sources')) {
         return {
           bind() { return this; },
           async all() { return { results: [{ source_id: 'v2ex', title: '测试真实趋势出现新进展', url: 'https://example.test/1', rank: 1, captured_at: new Date().toISOString() }] }; }
         };
+      }
+      if (sql.includes('FROM ai_attempts') && sql.includes('quota-or-capacity')) {
+        return { async first() { return null; } };
       }
       if (sql.includes('INSERT INTO ai_attempts')) {
         return { bind(...args) { attempts.push(args); return this; }, async run() { return { success: true }; } };
@@ -138,7 +146,7 @@ function makeBackfillDb({ validModelOutput, fallbackValid = false, disableFallba
 }
 
 {
-  const topic = { canonical_title: '真实趋势运行时降级', category: '科技', current_score: 88, breakout_score: 80, source_count: 2 };
+  const topic = { canonical_title: '真实趋势运行时降级', category: '科技', current_score: 88, breakout_score: 80, source_count: 1 };
   const evidence = [{ source_id: 'v2ex', title: '真实趋势运行时降级出现新消息', rank: 1 }];
   const calls = [];
   const rateLimit = Object.assign(new Error('Too many requests: rate limit exceeded'), { status: 429 });
@@ -161,7 +169,7 @@ function makeBackfillDb({ validModelOutput, fallbackValid = false, disableFallba
 }
 
 {
-  const topic = { canonical_title: '真实趋势权限失败', category: '科技', current_score: 88, breakout_score: 80, source_count: 2 };
+  const topic = { canonical_title: '真实趋势权限失败', category: '科技', current_score: 88, breakout_score: 80, source_count: 1 };
   const evidence = [{ source_id: 'v2ex', title: '真实趋势权限失败出现新消息', rank: 1 }];
   let calls = 0;
   const forbidden = Object.assign(new Error('Forbidden: permission denied'), { status: 403 });
@@ -174,7 +182,7 @@ function makeBackfillDb({ validModelOutput, fallbackValid = false, disableFallba
 }
 
 {
-  const topic = { canonical_title: '真实趋势错误分类', category: '科技', current_score: 88, breakout_score: 80, source_count: 2 };
+  const topic = { canonical_title: '真实趋势错误分类', category: '科技', current_score: 88, breakout_score: 80, source_count: 1 };
   const evidence = [{ source_id: 'v2ex', title: '真实趋势错误分类出现新消息', rank: 1 }];
   const rateLimit = Object.assign(new Error('Too many requests: rate limit exceeded'), { status: 429 });
   const result = await analyzeTopicDetailed({ AI: { async run() { throw rateLimit; } }, AI_MODEL: '@cf/test/model', AI_DISABLE_FALLBACK: '1' }, topic, evidence);
@@ -182,7 +190,7 @@ function makeBackfillDb({ validModelOutput, fallbackValid = false, disableFallba
 }
 
 {
-  const topic = { canonical_title: '真实趋势模型缺失', category: '科技', current_score: 88, breakout_score: 80, source_count: 2 };
+  const topic = { canonical_title: '真实趋势模型缺失', category: '科技', current_score: 88, breakout_score: 80, source_count: 1 };
   const evidence = [{ source_id: 'v2ex', title: '真实趋势模型缺失出现新消息', rank: 1 }];
   const notFound = Object.assign(new Error('Model not found'), { code: 404 });
   const result = await analyzeTopicDetailed({ AI: { async run() { throw notFound; } }, AI_MODEL: '@cf/test/missing', AI_DISABLE_FALLBACK: '1' }, topic, evidence);
@@ -196,14 +204,33 @@ const invalidTopic = {
 };
 const validTopic = {
   id: 'good-ai', canonical_title: '高质量 AI 数据', category: '科技', current_score: 79, breakout_score: 69,
-  ai_summary: goodSummary, ai_why_now: goodWhy, ai_opportunities_json: JSON.stringify(goodOpp), ai_risks: '需继续验证。'
+  ai_summary: goodSummary, ai_why_now: goodWhy, ai_opportunities_json: JSON.stringify(goodOpp), ai_risks: '需继续验证。',
+  ai_updated_at: new Date().toISOString()
 };
 const apiDb = {
   prepare(sql) {
     if (sql.includes('SELECT * FROM topics')) return { async all() { return { results: [invalidTopic, validTopic] }; } };
-    if (sql.includes('FROM sources ORDER BY')) return { async all() { return { results: [{ id: 'v2ex', name: 'V2EX', region: 'cn', kind: 'official-api', last_success_at: new Date().toISOString(), last_error: null, last_item_count: 10 }] }; } };
-    if (sql.includes('GROUP BY category')) return { async all() { return { results: [{ category: '科技', count: 2, avg_score: 79.5 }] }; } };
-    if (sql.includes('FROM topic_snapshots')) return { async all() { return { results: [] }; } };
+    if (sql.includes('FROM sources s')) return { async all() { return { results: [{ id: 'v2ex', name: 'V2EX', region: 'cn', kind: 'official-api', last_success_at: new Date().toISOString(), last_error: null, last_item_count: 10 }] }; } };
+    if (sql.includes('data_quality_contract_probe')) return { async first() { return {
+      missing_upstream: 0, invalid_upstream: 0, heat_path_violations: 0, engagement_path_violations: 0,
+      contract_heat_violations: 0, contract_engagement_violations: 0,
+      definition_heat_path_violations: 0, definition_engagement_path_violations: 0
+    }; } };
+    if (sql.includes('raw_heat_max')) return {
+      bind() { return this; },
+      async all() {
+        const now = new Date().toISOString();
+        const base = { source_id: 'v2ex', source_name: 'V2EX', source_kind: 'official-api', source_weight: 1,
+          metadata_json: JSON.stringify({ heat: null, engagement: 'topics[].replies' }), raw_heat_max: null,
+          raw_engagement_max: 1, raw_heat_latest: null, raw_engagement_latest: 1, best_rank: 1, observations: 1,
+          observed_upstreams: JSON.stringify(['https://example.test/source']), latest_captured_at: now,
+          heat_peak_captured_at: null, heat_peak_upstream: null, heat_peak_kind: null,
+          engagement_peak_captured_at: now, engagement_peak_upstream: 'https://example.test/source', engagement_peak_kind: 'official-api',
+          upstream: 'https://example.test/source', heat_metric_path: null, engagement_metric_path: 'topics[].replies' };
+        return { results: [{ ...base, topic_id: 'bad-ai' }, { ...base, topic_id: 'good-ai' }] };
+      }
+    };
+    if (sql.includes('FROM topic_snapshots')) return { bind() { return this; }, async all() { return { results: [] }; } };
     throw new Error(`unexpected API SQL: ${sql}`);
   }
 };

@@ -23,7 +23,7 @@ const classification = await analyzeTopicDetailed({
   category: '科技',
   current_score: 80,
   breakout_score: 90,
-  source_count: 2
+  source_count: 1
 }, [{ source_id: 'v2ex', rank: 1, title: '测试证据' }]);
 
 assert(inferenceCalls === 1, `daily quota exhaustion must not invoke fallback; calls=${inferenceCalls}`);

@@ -2,6 +2,9 @@ export function json(data, init = {}) {
   const headers = new Headers(init.headers || {});
   headers.set('content-type', 'application/json; charset=utf-8');
   headers.set('cache-control', 'no-store');
+  headers.set('access-control-allow-origin', '*');
+  headers.set('access-control-allow-methods', 'GET,POST,OPTIONS');
+  headers.set('access-control-allow-headers', 'content-type,authorization');
   return new Response(JSON.stringify(data), { ...init, headers });
 }
 
@@ -60,10 +63,30 @@ export function categoryFor(source, title = '') {
 
 export function scoreItem(rank, total = 50, heat = 0, engagement = 0) {
   const safeRank = Math.max(1, Number(rank) || total);
-  const rankScore = clamp(102 - (safeRank - 1) * (82 / Math.max(20, Math.min(total, 100))));
-  const heatBoost = clamp(Math.log10(Math.max(1, Number(heat) || 1)) * 5, 0, 24);
-  const engagementBoost = clamp(Math.log10(Math.max(1, Number(engagement) || 1)) * 4, 0, 18);
-  return clamp(rankScore * 0.78 + heatBoost + engagementBoost);
+  const safeTotal = Math.max(safeRank, Number(total) || 50);
+  // Rank is comparable within a source. Heat and engagement are source-native
+  // signals; logarithms keep large platform counters from dominating, but they
+  // are deliberately never treated as cross-platform units.
+  const rankScore = clamp(100 - ((safeRank - 1) / Math.max(1, safeTotal - 1)) * 70, 30, 100);
+  const heatNumber = Number(heat);
+  const engagementNumber = Number(engagement);
+  const heatBoost = heatNumber > 0 ? clamp(Math.log10(heatNumber + 1) * 4, 0, 24) : 0;
+  const engagementBoost = engagementNumber > 0 ? clamp(Math.log10(engagementNumber + 1) * 3, 0, 18) : 0;
+  return clamp(rankScore * 0.72 + heatBoost + engagementBoost);
+}
+
+export function scoreItemNormalized(rank, total = 50, heatPercentile = 0, engagementPercentile = 0) {
+  const safeRank = Math.max(1, Number(rank) || total);
+  const safeTotal = Math.max(safeRank, Number(total) || 50);
+  const rankScore = clamp(100 - ((safeRank - 1) / Math.max(1, safeTotal - 1)) * 70, 30, 100);
+  return scoreFromNormalizedComponents(rankScore, heatPercentile, engagementPercentile);
+}
+
+export function scoreFromNormalizedComponents(rankScore = 30, heatPercentile = 0, engagementPercentile = 0) {
+  const normalizedRankScore = clamp(Number(rankScore || 30), 30, 100);
+  const heatBoost = clamp(Number(heatPercentile || 0) * 24, 0, 24);
+  const engagementBoost = clamp(Number(engagementPercentile || 0) * 18, 0, 18);
+  return clamp(normalizedRankScore * 0.72 + heatBoost + engagementBoost);
 }
 
 export function topicStatus(score, breakout) {

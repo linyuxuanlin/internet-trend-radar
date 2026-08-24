@@ -38,7 +38,8 @@ function normalizeRows(rows) {
   return rows.map((row, index) => ({
     title: String(row?.Title || row?.title || row?.word || '').trim(),
     url: String(row?.Url || row?.url || row?.Schema || row?.schema || '').trim(),
-    heat: Number(row?.HotValue || row?.hot_value || row?.hotValue || row?.Heat || row?.heat || 0) || 0,
+    heat: row?.HotValue ?? row?.hot_value ?? row?.hotValue ?? row?.Heat ?? row?.heat ?? null,
+    heat_path: row?.HotValue !== undefined ? 'item.HotValue' : row?.hot_value !== undefined ? 'item.hot_value' : row?.hotValue !== undefined ? 'item.hotValue' : row?.Heat !== undefined ? 'item.Heat' : row?.heat !== undefined ? 'item.heat' : null,
     rank: index + 1
   })).filter(row => row.title);
 }
@@ -54,7 +55,7 @@ function isToutiaoUrl(value) {
 }
 
 function makeTopic(row, total, capturedAt) {
-  const score = scoreItem(row.rank, total, row.heat, 0);
+  const score = scoreItem(row.rank, total, 0, 0);
   const breakout = clamp(score * (row.rank <= 5 ? 0.95 : row.rank <= 10 ? 0.8 : 0.62));
   const id = fingerprintTitle(row.title);
   const fallbackUrl = `https://www.toutiao.com/search/?keyword=${encodeURIComponent(row.title)}`;
@@ -82,7 +83,8 @@ function makeTopic(row, total, capturedAt) {
       title: row.title,
       rank: row.rank,
       captured_at: capturedAt
-    }]
+    }],
+    raw_signals: [{ source_id: 'toutiao', raw_heat_max: row.heat === null || row.heat === undefined ? null : Number(row.heat), raw_engagement_max: null, raw_heat_latest: row.heat === null || row.heat === undefined ? null : Number(row.heat), raw_engagement_latest: null, best_rank: row.rank, observations: 1, latest_captured_at: capturedAt, upstream: ENDPOINT, metric_paths: { heat: row.heat_path || null, engagement: null } }]
   };
 }
 
@@ -112,7 +114,7 @@ function setSource(dashboard, source) {
 }
 
 const dashboard = JSON.parse(await readFile(DASHBOARD, 'utf8'));
-const capturedAt = dashboard.generatedAt || nowIso;
+const capturedAt = nowIso;
 
 try {
   const body = await fetchBoard();
@@ -129,7 +131,8 @@ try {
     last_success_at: capturedAt,
     last_error_at: null,
     last_error: null,
-    last_item_count: topics.length
+    last_item_count: topics.length,
+    latest_upstream: ENDPOINT
   });
   await writeFile(DASHBOARD, JSON.stringify(dashboard, null, 2) + '\n', 'utf8');
   console.log(`OK toutiao: ${topics.length}; dashboard topics=${dashboard.topics.length}; sanitizedOffDomain=${offDomainCount}`);

@@ -23,14 +23,37 @@ function readyDB({ eligible = 4, attempted = 0, verified = 0, stale = 0, quota =
       if (sql === 'SELECT COUNT(*) as count FROM sources') return { async first() { return { count: 12 }; } };
       if (sql.includes('FROM sources WHERE last_success_at IS NOT NULL')) return { async first() { return { count: 10 }; } };
       if (sql.includes('FROM sources WHERE last_error_at IS NOT NULL')) return { async first() { return { count: 2 }; } };
+      if (sql.includes('FROM sources WHERE enabled=1')) return { async first() { return { count: 10 }; } };
       if (sql.includes('SELECT MAX(last_success_at)')) return { async first() { return { value: '2026-08-21T19:00:00.000Z' }; } };
+      if (sql.includes('SELECT MAX(CASE WHEN enabled=1')) return { async first() { return { value: '2026-08-21T19:00:00.000Z' }; } };
+      if (sql.includes('FROM sources s')) return { async all() { return { results: [{
+        id: 'v2ex', name: 'V2EX', region: 'cn', kind: 'official-api', enabled: 1, metadata_json: '{}',
+        raw_items: 20, missing_heat: 0, missing_engagement: 0, zero_heat: 0, zero_engagement: 0,
+        contract_heat_violations: 0, contract_engagement_violations: 0,
+        definition_heat_path_violations: 0, definition_engagement_path_violations: 0,
+        heat_path_violations: 0, engagement_path_violations: 0, upstream_count: 1,
+        latest_captured_at: new Date().toISOString()
+      }] }; } };
+      if (sql.includes("SUM(CASE WHEN json_extract(raw_json,'$.trendRadarUpstream')")) return { async first() { return {
+        missing_upstream: 0, invalid_upstream: 0, missing_heat: 0, missing_engagement: 0,
+        heat_path_violations: 0, engagement_path_violations: 0
+      }; } };
       if (sql.includes('SELECT id,last_error,last_error_at FROM sources')) return { async all() { return { results: [] }; } };
+      if (sql.includes('COUNT(DISTINCT CASE WHEN json_extract(r.raw_json')) return { async all() { return { results: [{
+        id: 'v2ex', name: 'V2EX', region: 'cn', kind: 'official-api', enabled: 1, metadata_json: '{}',
+        raw_items: 20, missing_heat: 0, missing_engagement: 0, zero_heat: 0, zero_engagement: 0,
+        contract_heat_violations: 0, contract_engagement_violations: 0,
+        definition_heat_path_violations: 0, definition_engagement_path_violations: 0,
+        heat_path_violations: 0, engagement_path_violations: 0, upstream_count: 1,
+        latest_captured_at: new Date().toISOString()
+      }] }; } };
       if (sql === 'SELECT COUNT(*) as count FROM topics WHERE current_score >= 45') return { async first() { return { count: eligible }; } };
       if (sql === 'SELECT COUNT(*) as count FROM topics WHERE current_score >= 45 AND ai_updated_at IS NOT NULL') return { async first() { return { count: attempted }; } };
       if (sql.includes('COALESCE(ai_summary')) return { async first() { return { count: verified }; } };
       if (sql.includes("julianday(ai_updated_at) < julianday('now','-6 hours')")) return { async first() { return { count: stale }; } };
       if (sql.includes('SELECT MAX(ai_updated_at)')) return { async first() { return { value: attempted ? '2026-08-21T18:30:00.000Z' : null }; } };
       if (sql.includes('SELECT count(*) AS attempts FROM ai_attempts')) return { async first() { return { attempts: attemptsToday }; } };
+      if (sql.includes('FROM ai_attempts WHERE julianday(attempted_at)')) return { async all() { return { results: [] }; } };
       if (sql.includes("failure_reason LIKE 'inference-error:quota-or-capacity%'")) return {
         async first() {
           return quota ? {

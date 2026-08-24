@@ -53,14 +53,15 @@ function normalizeRows(nextData) {
   const rows = candidates.find(Array.isArray) || [];
   return rows.map((row, index) => ({
     title: String(row?.tagName || row?.title || row?.name || '').trim(),
-    heat: Number(row?.heat || row?.hot || row?.hotValue || 0) || 0,
+    heat: row?.heat ?? row?.hot ?? row?.hotValue ?? null,
+    heat_path: row?.heat !== undefined ? 'item.heat' : row?.hot !== undefined ? 'item.hot' : row?.hotValue !== undefined ? 'item.hotValue' : null,
     rank: Number(row?.rank || index + 1) || index + 1,
     tagId: String(row?.tagId || row?.id || '').trim()
   })).filter(row => row.title);
 }
 
 function makeTopic(row, total, capturedAt) {
-  const score = scoreItem(row.rank, total, row.heat, 0);
+  const score = scoreItem(row.rank, total, 0, 0);
   const breakout = clamp(score * (row.rank <= 5 ? 0.95 : row.rank <= 10 ? 0.8 : 0.62));
   const id = fingerprintTitle(row.title);
   const url = row.tagId
@@ -89,7 +90,8 @@ function makeTopic(row, total, capturedAt) {
       title: row.title,
       rank: row.rank,
       captured_at: capturedAt
-    }]
+    }],
+    raw_signals: [{ source_id: 'hupu', raw_heat_max: row.heat === null || row.heat === undefined ? null : Number(row.heat), raw_engagement_max: null, raw_heat_latest: row.heat === null || row.heat === undefined ? null : Number(row.heat), raw_engagement_latest: null, best_rank: row.rank, observations: 1, latest_captured_at: capturedAt, upstream: ENDPOINT, metric_paths: { heat: row.heat_path || null, engagement: null } }]
   };
 }
 
@@ -119,7 +121,7 @@ function setSource(dashboard, source) {
 }
 
 const dashboard = JSON.parse(await readFile(DASHBOARD, 'utf8'));
-const capturedAt = dashboard.generatedAt || nowIso;
+const capturedAt = nowIso;
 
 try {
   const html = await fetchHotPage();
@@ -135,7 +137,8 @@ try {
     last_success_at: capturedAt,
     last_error_at: null,
     last_error: null,
-    last_item_count: topics.length
+    last_item_count: topics.length,
+    latest_upstream: ENDPOINT
   });
   await writeFile(DASHBOARD, JSON.stringify(dashboard, null, 2) + '\n', 'utf8');
   console.log(`OK hupu: ${topics.length}; dashboard topics=${dashboard.topics.length}`);

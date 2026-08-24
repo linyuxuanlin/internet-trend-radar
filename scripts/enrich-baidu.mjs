@@ -68,7 +68,7 @@ function parseFallback(html) {
     const desc = decodeHtml((block.match(/class=["'][^"']*hot-desc[^"']*["'][^>]*>([\s\S]*?)<\//) || [])[1] || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     const heatText = (block.match(/hot-index[^>]*>([\d,]+)/) || [])[1] || '0';
     const url = decodeHtml((block.match(/href=["']([^"']+)["']/) || [])[1] || '').trim();
-    if (title) rows.push({ word: title, desc, hotScore: Number(heatText.replace(/,/g, '')) || 0, url });
+    if (title) rows.push({ word: title, desc, hotScore: heatText ? Number(heatText.replace(/,/g, '')) : null, url });
   }
   return rows;
 }
@@ -77,14 +77,15 @@ function normalizeRows(raw) {
   return raw.map((row, index) => ({
     title: String(row?.word || row?.query || row?.title || '').trim(),
     desc: String(row?.desc || row?.description || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(),
-    heat: Number(row?.hotScore || row?.hot_score || row?.index || 0) || 0,
+    heat: row?.hotScore ?? row?.hot_score ?? row?.index ?? null,
+    heat_path: row?.hotScore !== undefined ? 'item.hotScore' : row?.hot_score !== undefined ? 'item.hot_score' : row?.index !== undefined ? 'item.index' : null,
     url: String(row?.url || row?.rawUrl || row?.appUrl || '').trim(),
     rank: index + 1
   })).filter(row => row.title);
 }
 
 function makeTopic(row, total, capturedAt) {
-  const score = scoreItem(row.rank, total, row.heat, 0);
+  const score = scoreItem(row.rank, total, 0, 0);
   const breakout = clamp(score * (row.rank <= 5 ? 0.95 : row.rank <= 10 ? 0.8 : 0.62));
   const id = fingerprintTitle(row.title);
   const fallbackUrl = `https://www.baidu.com/s?wd=${encodeURIComponent(row.title)}`;
@@ -101,7 +102,8 @@ function makeTopic(row, total, capturedAt) {
     source_count: 1,
     mention_count: 1,
     status: topicStatus(score, breakout),
-    ai_summary: row.desc.slice(0, 180) || null,
+    source_summary: row.desc.slice(0, 180) || null,
+    ai_summary: null,
     ai_why_now: null,
     opportunities: [],
     sources: [{
@@ -111,7 +113,8 @@ function makeTopic(row, total, capturedAt) {
       title: row.title,
       rank: row.rank,
       captured_at: capturedAt
-    }]
+    }],
+    raw_signals: [{ source_id: 'baidu', raw_heat_max: row.heat === null || row.heat === undefined ? null : Number(row.heat), raw_engagement_max: null, raw_heat_latest: row.heat === null || row.heat === undefined ? null : Number(row.heat), raw_engagement_latest: null, best_rank: row.rank, observations: 1, latest_captured_at: capturedAt, upstream: PAGE, metric_paths: { heat: row.heat_path || null, engagement: null } }]
   };
 }
 
@@ -141,7 +144,7 @@ function setSource(dashboard, source) {
 }
 
 const dashboard = JSON.parse(await readFile(DASHBOARD, 'utf8'));
-const capturedAt = dashboard.generatedAt || nowIso;
+const capturedAt = nowIso;
 
 try {
   const html = await fetchHtml();
@@ -158,7 +161,8 @@ try {
     last_success_at: capturedAt,
     last_error_at: null,
     last_error: null,
-    last_item_count: topics.length
+    last_item_count: topics.length,
+    latest_upstream: PAGE
   });
   await writeFile(DASHBOARD, JSON.stringify(dashboard, null, 2) + '\n', 'utf8');
   console.log(`OK baidu: ${topics.length}; dashboard topics=${dashboard.topics.length}`);

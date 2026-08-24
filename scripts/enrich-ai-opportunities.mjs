@@ -1,8 +1,8 @@
 import { readFile, writeFile } from 'node:fs/promises';
 
 const dashboardPath = new URL('../public/data/dashboard.json', import.meta.url);
-const productionSourceUrl = 'https://internet-trend-radar.linyuxuanlin.workers.dev/api/dashboard';
-const pagesSourceUrl = 'https://linyuxuanlin.github.io/internet-trend-radar/data/dashboard.json';
+const productionSourceUrl = process.env.AI_SOURCE_URL || 'https://radar.wiki-power.com/api/dashboard';
+const pagesSourceUrl = process.env.PAGES_SOURCE_URL || 'https://radar.wiki-power.com/data/dashboard.json';
 const sourceUrls = [...new Set([process.env.AI_SOURCE_URL, productionSourceUrl, pagesSourceUrl].filter(Boolean))];
 const minMatches = Math.max(0, Number(process.env.MIN_AI_MATCHES || 0));
 const maxAgeMs = Math.max(1, Number(process.env.MAX_AI_AGE_HOURS || 12)) * 60 * 60 * 1000;

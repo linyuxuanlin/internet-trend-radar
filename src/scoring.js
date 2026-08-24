@@ -1,4 +1,5 @@
-import { clamp, scoreItem, topicStatus } from './utils.js';
+import { clamp, scoreFromNormalizedComponents, topicStatus } from './utils.js';
+import { currentSourcePredicate } from './source-health.js';
 
 function chunks(items, size) {
   const out = [];
@@ -9,22 +10,54 @@ function chunks(items, size) {
 export async function rebuildTopics(db, windowHours = 24) {
   const since = new Date(Date.now() - windowHours * 3600 * 1000).toISOString();
   const { results = [] } = await db.prepare(`
-    SELECT fingerprint,
+    WITH recent AS (
+      SELECT raw_items.*,
+             MAX(CASE WHEN rank > 0 THEN rank ELSE 0 END) OVER (PARTITION BY source_id) AS source_total
+       FROM raw_items
+       JOIN sources active_source ON active_source.id = raw_items.source_id
+        AND ${currentSourcePredicate('active_source')}
+       WHERE captured_at >= ?
+    ), ranked AS (
+      SELECT recent.*,
+             CASE WHEN source_total > 1 AND rank > 0
+                  THEN 100 - ((rank - 1.0) / (source_total - 1.0)) * 70
+                  ELSE 30 END AS rank_score,
+             heat_rank.heat_percentile,
+             engagement_rank.engagement_percentile
+        FROM recent
+        LEFT JOIN (
+          SELECT id,
+                 percent_rank() OVER (PARTITION BY source_id ORDER BY heat) AS heat_percentile
+            FROM recent
+           WHERE heat IS NOT NULL
+        ) heat_rank ON heat_rank.id = recent.id
+        LEFT JOIN (
+          SELECT id,
+                 percent_rank() OVER (PARTITION BY source_id ORDER BY engagement) AS engagement_percentile
+            FROM recent
+           WHERE engagement IS NOT NULL
+        ) engagement_rank ON engagement_rank.id = recent.id
+    )
+    SELECT r.fingerprint,
            MIN(title) AS canonical_title,
            MIN(category) AS category,
            MIN(language) AS language,
            MIN(captured_at) AS first_seen,
            MAX(captured_at) AS last_seen,
            COUNT(*) AS mentions,
-           COUNT(DISTINCT source_id) AS source_count,
-           MIN(COALESCE(rank, 100)) AS best_rank,
-           MAX(COALESCE(heat, 0)) AS max_heat,
-           MAX(COALESCE(engagement, 0)) AS max_engagement
-    FROM raw_items
-    WHERE captured_at >= ?
+           COUNT(DISTINCT r.source_id) AS source_count,
+           AVG(COALESCE(s.weight, 1)) AS source_weight,
+           MIN(COALESCE(r.rank, 100)) AS best_rank,
+           AVG(r.rank_score) AS rank_score,
+           AVG(r.heat_percentile) AS heat_percentile,
+           AVG(r.engagement_percentile) AS engagement_percentile,
+           MAX(r.heat) AS max_heat,
+           MAX(r.engagement) AS max_engagement
+    FROM ranked r
+    LEFT JOIN sources s ON s.id = r.source_id
     GROUP BY fingerprint
-    ORDER BY source_count DESC, mentions DESC
-    LIMIT 500
+    ORDER BY source_count DESC, mentions DESC, max_heat DESC, max_engagement DESC
+    LIMIT 1000
   `).bind(since).all();
 
   const { results: previousRows = [] } = await db.prepare(`
@@ -39,10 +72,11 @@ export async function rebuildTopics(db, windowHours = 24) {
   const statements = [];
 
   for (const row of results) {
-    const base = scoreItem(row.best_rank, 50, row.max_heat, row.max_engagement);
+    const base = scoreFromNormalizedComponents(row.rank_score, row.heat_percentile, row.engagement_percentile);
     const crossPlatform = clamp(Math.log2(Math.max(1, row.source_count)) * 10, 0, 25);
     const persistence = clamp(Math.log2(Math.max(1, row.mentions)) * 3, 0, 12);
-    const score = clamp(base * 0.82 + crossPlatform + persistence);
+    const sourceWeight = clamp(Number(row.source_weight || 1), 0.25, 1.25);
+    const score = clamp(base * 0.82 * sourceWeight + crossPlatform + persistence);
     const previous = previousByTopic.get(row.fingerprint);
     const scoreDelta = previous ? score - Number(previous.score || 0) : 0;
     const sourceDelta = previous ? Number(row.source_count) - Number(previous.source_count || 0) : 0;
@@ -66,7 +100,12 @@ export async function rebuildTopics(db, windowHours = 24) {
   if (results.length) {
     await db.prepare(`
       INSERT OR IGNORE INTO topic_sources(topic_id,source_id,external_id,url,title,rank,captured_at)
-      SELECT fingerprint,source_id,external_id,url,title,rank,captured_at FROM raw_items WHERE captured_at>=?
+      SELECT r.fingerprint,r.source_id,r.external_id,r.url,r.title,r.rank,r.captured_at
+        FROM raw_items r
+        JOIN sources active_source ON active_source.id = r.source_id
+         AND ${currentSourcePredicate('active_source')}
+        JOIN topics t ON t.id = r.fingerprint
+       WHERE r.captured_at>=?
     `).bind(since).run();
   }
   return results.length;

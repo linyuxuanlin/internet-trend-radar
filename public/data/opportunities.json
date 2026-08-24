@@ -1,0 +1,8 @@
+{
+  "generatedAt": "2026-08-24T18:01:11.793Z",
+  "buildSha": "1e0758341652c1e3992b9d8669746273aef7e01c",
+  "source": "pages-static",
+  "status": "degraded",
+  "provider": "cloudflare-workers-ai",
+  "opportunities": []
+}

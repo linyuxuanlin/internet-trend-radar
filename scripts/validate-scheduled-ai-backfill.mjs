@@ -19,7 +19,7 @@ if (!scheduled.includes("if (!env.AI)")) throw new Error('base scheduled AI back
 if (!scheduled.includes('scheduled AI backfill failed; real collection already completed')) {
   throw new Error('base scheduled AI failure must be isolated from completed real-data collection');
 }
-if (!scheduled.includes("controller.cron === '5 0 * * *'")) throw new Error('base daily digest cron guard missing');
+if (!scheduled.includes("controller.cron === '0 1 * * *'")) throw new Error('base daily digest cron guard missing');
 
 // Production entrypoint is src/worker.js. It must not delegate scheduled runs to
 // baseWorker.scheduled because base index.js performs an extra direct AI backfill
@@ -39,7 +39,7 @@ if (workerScheduled.includes('baseWorker.scheduled(controller, env, ctx)')) {
 if (workerScheduled.includes('enrichTopTopics(')) {
   throw new Error('production scheduled handler must not launch a second direct AI enrichment pass');
 }
-if (!workerScheduled.includes("controller.cron === '5 0 * * *'")) {
+if (!workerScheduled.includes("controller.cron === '0 1 * * *'")) {
   throw new Error('production worker must preserve daily digest cron guard');
 }
 if (!worker.includes('export function propagateScheduledFailure(error)')) {
@@ -122,8 +122,9 @@ const topN = Number(config?.vars?.AI_TOP_N || 0);
 if (topN !== 10) throw new Error(`expected bounded AI_TOP_N=10, got ${topN}`);
 if (topN > 12) throw new Error(`AI_TOP_N must remain bounded to avoid inference bursts, got ${topN}`);
 const productionBudget = Number(config?.vars?.AI_DAILY_MODEL_CALL_BUDGET || 0);
-if (productionBudget !== 24) throw new Error(`expected production AI_DAILY_MODEL_CALL_BUDGET=24, got ${productionBudget}`);
-if (productionBudget > 24) throw new Error(`production daily model-call budget must stay conservative under the free neuron allocation, got ${productionBudget}`);
+if (!Number.isInteger(productionBudget) || productionBudget < 24 || productionBudget > 240) {
+  throw new Error(`production AI_DAILY_MODEL_CALL_BUDGET must be an integer between 24 and 240, got ${productionBudget}`);
+}
 if (String(config?.vars?.AI_DISABLE_FALLBACK || '') !== '1') {
   throw new Error('production must disable low-yield fallback until diagnostics show it is competitive');
 }

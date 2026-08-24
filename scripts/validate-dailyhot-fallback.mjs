@@ -20,10 +20,10 @@ async function validateGenericFallback() {
     throw new Error(`unexpected URL ${url}`);
   };
 
-  const items = await collectDailyHot({ DAILYHOT_BASES: 'https://broken.example,https://empty.example,https://good.example' }, 'weibo');
+  const items = await collectDailyHot({ DAILYHOT_BASES: 'https://broken.example,https://empty.example,https://good.example' }, 'generic');
   if (items.length !== 1) throw new Error(`expected 1 real item, got ${items.length}`);
   if (items[0].title !== '真实热榜条目') throw new Error('fallback returned wrong item');
-  if (items[0].raw?.trendRadarUpstream !== 'https://good.example') throw new Error('fallback provenance missing');
+  if (items[0].raw?.trendRadarUpstream !== 'https://good.example/generic') throw new Error('fallback provenance missing full request URL');
   if (calls.length !== 3) throw new Error(`expected three upstream attempts, got ${calls.length}`);
 }
 

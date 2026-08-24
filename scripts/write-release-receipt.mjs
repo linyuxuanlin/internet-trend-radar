@@ -29,18 +29,27 @@ const fallbackDepth = stage => {
 };
 const socialUpstreams = Object.fromEntries(socialIds.map(id => {
   const row = sourceHealth.find(item => item?.id === id);
-  if (!row?.healthy) throw new Error(`${id}: release receipt requires healthy social source`);
+  if (!row?.healthy) return [id, {
+    provider: row?.upstreamProvider || null,
+    stage: 'failed',
+    upstream: row?.upstream || null,
+    fallbackDepth: null,
+    available: false
+  }];
   const upstream = String(row.upstream || '').trim();
   const provider = String(row.upstreamProvider || '').trim();
   const stage = String(row.upstreamStage || '').trim();
   if (!/^https:\/\//.test(upstream)) throw new Error(`${id}: release receipt missing HTTPS upstream`);
   if (!provider || provider === 'unknown') throw new Error(`${id}: release receipt missing upstream provider`);
   if (!stage || ['unknown', 'failed'].includes(stage)) throw new Error(`${id}: release receipt missing upstream stage`);
-  return [id, { provider, stage, upstream, fallbackDepth: fallbackDepth(stage) }];
+  return [id, { provider, stage, upstream, fallbackDepth: fallbackDepth(stage), available: true }];
 }));
-const fallbackSocialSources = socialIds.filter(id => socialUpstreams[id].fallbackDepth > 0);
-const socialFallbackMaxDepth = Math.max(0, ...socialIds.map(id => socialUpstreams[id].fallbackDepth));
-const socialFallbackSeverity = socialFallbackMaxDepth === 0 ? 'none' : socialFallbackMaxDepth === 1 ? 'fallback' : 'deep-fallback';
+const fallbackSocialSources = socialIds.filter(id => socialUpstreams[id].available !== true || socialUpstreams[id].fallbackDepth > 0);
+const availableFallbackDepths = socialIds.map(id => socialUpstreams[id].fallbackDepth).filter(depth => Number.isInteger(depth));
+const socialFallbackMaxDepth = Math.max(0, ...availableFallbackDepths);
+const socialFallbackSeverity = socialIds.some(id => socialUpstreams[id].available !== true)
+  ? 'unavailable'
+  : socialFallbackMaxDepth === 0 ? 'none' : socialFallbackMaxDepth === 1 ? 'fallback' : 'deep-fallback';
 
 const receipt = {
   buildSha,

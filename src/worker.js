@@ -1,10 +1,35 @@
 import baseWorker from './index.js';
-import { aiAvailabilityStatus } from './api.js';
+import { aiAvailabilityStatus, opportunitiesSnapshot } from './api.js';
 import { collectAll } from './collector.js';
 import { sendDailyDigest } from './email.js';
 import { ensureSchema } from './schema.js';
 
 const DEFAULT_AI_QUALITY_ROLLOUT_AT = '2026-08-24T03:33:53.000Z';
+const STATIC_SNAPSHOT_MAX_AGE_HOURS = 3;
+
+export async function serveFreshStaticAsset(request, env) {
+  if (!env.ASSETS?.fetch) return Response.json({ ready: false, preview: false, error: 'missing assets binding' }, { status: 503 });
+  const response = await env.ASSETS.fetch(request);
+  if (!response.ok) return Response.json({ ready: false, preview: false, error: 'static snapshot asset is unavailable', upstream_status: response.status }, { status: 503 });
+  let payload;
+  try {
+    payload = await response.clone().json();
+  } catch {
+    return Response.json({ ready: false, preview: false, error: 'static snapshot is not valid JSON' }, { status: 503 });
+  }
+  const timestamp = Date.parse(String(payload?.generatedAt || ''));
+  const ageMs = Date.now() - timestamp;
+  if (!Number.isFinite(timestamp) || ageMs < -5 * 60 * 1000 || ageMs > STATIC_SNAPSHOT_MAX_AGE_HOURS * 3600000) {
+    return Response.json({
+      generatedAt: payload?.generatedAt || null,
+      ready: false,
+      preview: false,
+      error: 'static snapshot is stale or has an invalid generatedAt',
+      maxAgeHours: STATIC_SNAPSHOT_MAX_AGE_HOURS
+    }, { status: 503 });
+  }
+  return response;
+}
 
 export function mergeAIAvailabilityIntoDebug(debug, availability) {
   const payload = debug && typeof debug === 'object' ? debug : {};
@@ -101,12 +126,23 @@ export default {
     if (isForbiddenPreviewPath(url.pathname)) {
       return Response.json({ error: 'preview topics are disabled in production', ready: false, preview: false }, { status: 404 });
     }
+    if (['/data/dashboard.json', '/data/health.json', '/data/release.json'].includes(url.pathname)) {
+      return serveFreshStaticAsset(request, env);
+    }
     if (url.pathname === '/api/ai-quality-rollout') {
       try {
         await ensureSchema(env);
         return rejectPreviewResponse(Response.json(await aiQualityRolloutStats(env)));
       } catch (error) {
         return Response.json({ ok: false, preview: false, error: String(error?.message || error) }, { status: 503 });
+      }
+    }
+    if (url.pathname === '/data/opportunities.json') {
+      try {
+        await ensureSchema(env);
+        return opportunitiesSnapshot(env, request);
+      } catch (error) {
+        return Response.json({ ready: false, status: 'degraded', error: String(error?.message || error), opportunities: [] }, { status: 503 });
       }
     }
     if (url.pathname !== '/api/debug') {
@@ -137,7 +173,7 @@ export default {
   async scheduled(controller, env, ctx) {
     const run = (async () => {
       await ensureSchema(env);
-      if (controller.cron === '5 0 * * *') {
+      if (controller.cron === '0 1 * * *') {
         await sendDailyDigest(env);
         return;
       }

@@ -47,9 +47,14 @@ function normalizeRows(body) {
     const articleId = String(article?.article_id || item?.article_id || row?.article_id || '').trim();
     const title = String(article?.title || item?.title || row?.title || '').trim();
     const summary = String(article?.brief_content || item?.brief_content || row?.brief_content || '').trim();
-    const heat = Number(article?.view_count || item?.view_count || 0);
-    const engagement = ['digg_count', 'comment_count', 'collect_count', 'share_count']
-      .reduce((sum, key) => sum + Number(article?.[key] || item?.[key] || 0), 0);
+    const viewCount = article?.view_count ?? item?.view_count;
+    const heat = viewCount === null || viewCount === undefined ? null : Number(viewCount);
+    const presentEngagement = ['digg_count', 'comment_count', 'collect_count', 'share_count']
+      .map(key => article?.[key] ?? item?.[key])
+      .filter(value => value !== null && value !== undefined && value !== '')
+      .map(Number)
+      .filter(value => Number.isFinite(value) && value >= 0);
+    const engagement = presentEngagement.length ? presentEngagement.reduce((sum, value) => sum + value, 0) : null;
     return {
       articleId,
       title,
@@ -62,7 +67,7 @@ function normalizeRows(body) {
 }
 
 function makeTopic(row, rank, total, capturedAt) {
-  const score = scoreItem(rank, total, row.heat, row.engagement);
+  const score = scoreItem(rank, total, 0, 0);
   const breakout = clamp(score * (rank <= 5 ? 0.92 : rank <= 10 ? 0.76 : 0.58));
   const id = fingerprintTitle(row.title);
   return {
@@ -78,7 +83,8 @@ function makeTopic(row, rank, total, capturedAt) {
     source_count: 1,
     mention_count: 1,
     status: topicStatus(score, breakout),
-    ai_summary: [row.summary.slice(0, 160), row.author && `作者 ${row.author}`].filter(Boolean).join(' · ') || null,
+    source_summary: [row.summary.slice(0, 160), row.author && `作者 ${row.author}`].filter(Boolean).join(' · ') || null,
+    ai_summary: null,
     ai_why_now: null,
     opportunities: [],
     sources: [{
@@ -88,7 +94,8 @@ function makeTopic(row, rank, total, capturedAt) {
       title: row.title,
       rank,
       captured_at: capturedAt
-    }]
+    }],
+    raw_signals: [{ source_id: 'juejin', raw_heat_max: row.heat, raw_engagement_max: row.engagement, raw_heat_latest: row.heat, raw_engagement_latest: row.engagement, best_rank: rank, observations: 1, latest_captured_at: capturedAt, upstream: API, metric_paths: { heat: 'article_info.view_count', engagement: 'digg_count+comment_count+collect_count+share_count' } }]
   };
 }
 
@@ -118,7 +125,7 @@ function setSource(dashboard, source) {
 }
 
 const dashboard = JSON.parse(await readFile(DASHBOARD, 'utf8'));
-const capturedAt = dashboard.generatedAt || nowIso;
+const capturedAt = nowIso;
 
 try {
   const body = await fetchJuejin();
@@ -135,7 +142,8 @@ try {
     last_success_at: capturedAt,
     last_error_at: null,
     last_error: null,
-    last_item_count: topics.length
+    last_item_count: topics.length,
+    latest_upstream: API
   });
   await writeFile(DASHBOARD, JSON.stringify(dashboard, null, 2) + '\n', 'utf8');
   console.log(`OK juejin: ${topics.length}; dashboard topics=${dashboard.topics.length}`);

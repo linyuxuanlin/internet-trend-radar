@@ -4,6 +4,7 @@ const OPPORTUNITIES_URL = String(process.env.OPPORTUNITIES_URL || '').trim();
 const EXPECTED_BUILD_SHA = String(process.env.EXPECTED_BUILD_SHA || '').trim().toLowerCase();
 const FETCH_TIMEOUT_MS = Number(process.env.FETCH_TIMEOUT_MS || 15_000);
 const MAX_RELEASE_AGE_MS = Number(process.env.MAX_RELEASE_AGE_MS || 3 * 60 * 60 * 1000);
+const MAX_DYNAMIC_OPPORTUNITY_AGE_MS = Number(process.env.MAX_DYNAMIC_OPPORTUNITY_AGE_MS || 10 * 60 * 1000);
 const MAX_FUTURE_SKEW_MS = Number(process.env.MAX_FUTURE_SKEW_MS || 5 * 60 * 1000);
 
 function validSha(value) {
@@ -49,7 +50,13 @@ export function validateReleaseCoherence({ dashboard, health, opportunities, exp
     throw new Error(`health generatedAt mismatch: dashboard=${dashboard.generatedAt} health=${health.generatedAt}`);
   }
   if (opportunities.generatedAt !== dashboard.generatedAt) {
-    throw new Error(`opportunities generatedAt mismatch: dashboard=${dashboard.generatedAt} opportunities=${opportunities.generatedAt}`);
+    if (opportunities.source !== 'worker-d1') {
+      throw new Error(`opportunities generatedAt mismatch: dashboard=${dashboard.generatedAt} opportunities=${opportunities.generatedAt}`);
+    }
+    const dynamicAgeMs = now - Date.parse(opportunities.generatedAt);
+    if (dynamicAgeMs < -MAX_FUTURE_SKEW_MS || dynamicAgeMs > MAX_DYNAMIC_OPPORTUNITY_AGE_MS) {
+      throw new Error(`dynamic opportunities are stale or future-dated: ageMs=${dynamicAgeMs} maxAgeMs=${MAX_DYNAMIC_OPPORTUNITY_AGE_MS}`);
+    }
   }
 
   if (dashboard.preview !== false || health.preview !== false) {

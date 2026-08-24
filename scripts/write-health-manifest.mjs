@@ -3,7 +3,8 @@ import { classifySourceFailure } from './source-failure-diagnostics.mjs';
 
 const DASHBOARD = new URL('../public/data/dashboard.json', import.meta.url);
 const HEALTH = new URL('../public/data/health.json', import.meta.url);
-const REQUIRED_DIRECT_CN = String(process.env.REQUIRED_DIRECT_CN || 'v2ex,sspai,bilibili')
+const configuredRequiredDirectCn = process.env.REQUIRED_DIRECT_CN;
+const REQUIRED_DIRECT_CN = String(configuredRequiredDirectCn === undefined ? 'v2ex,sspai,bilibili' : configuredRequiredDirectCn)
   .split(',')
   .map(value => value.trim())
   .filter(Boolean);
@@ -45,7 +46,8 @@ function sourceHealthRow(source) {
     lastErrorType: failure.type,
     lastErrorCode: failure.code,
     freshnessSeconds,
-    upstream: source?.upstream || null,
+    upstream: source?.upstream || source?.latest_upstream || null,
+    upstreams: Array.isArray(source?.latest_upstreams) ? source.latest_upstreams : null,
     upstreamProvider: source?.upstream_provider || null,
     upstreamStage: source?.upstream_stage || null
   };
