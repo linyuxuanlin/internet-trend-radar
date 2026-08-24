@@ -27,6 +27,15 @@ try {
     if (href === 'https://alias.example/alias') {
       return new Response(JSON.stringify({ data: [{ id: 3, title: 'alias fixture', hot: 10, view: 100, engagement: 55, comments: 3, comment: 7 }] }), { status: 200, headers: { 'content-type': 'application/json' } });
     }
+    if (href === 'https://generic.example/baidu') {
+      return new Response(JSON.stringify({ data: [{ id: 6, title: 'Baidu field contract', index: 1, score: 999, view: 888, hot_score: 123 }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    if (href === 'https://generic.example/toutiao') {
+      return new Response(JSON.stringify({ data: [{ id: 7, title: 'Toutiao field contract', rank: 1, score: 999, view: 888, HotValue: 456 }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    if (href === 'https://generic.example/hupu') {
+      return new Response(JSON.stringify({ data: [{ id: 8, title: 'Hupu field contract', rank: 1, score: 999, view: 888, hotValue: 321 }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
     if (href.startsWith('https://api.bilibili.com/x/web-interface/ranking/region')) {
       return new Response(JSON.stringify({ code: 0, data: { list: [{ bvid: 'BVmetric', title: 'Bilibili metric fixture', stat: { view: 1000, like: 10, reply: 20, coin: 30, favorite: 40, share: 50, danmaku: 60 } }] } }), { status: 200, headers: { 'content-type': 'application/json' } });
     }
@@ -52,6 +61,12 @@ try {
   const [alias] = await collectDailyHot({ DAILYHOT_BASE: 'https://alias.example' }, 'alias');
   if (!alias || alias.heat !== 10 || alias.engagement !== 55) throw new Error(`adapter engagement must take precedence, got heat=${alias?.heat} engagement=${alias?.engagement}`);
   if (alias.raw?.trendRadarMetrics?.heat_path !== 'item.hot' || alias.raw?.trendRadarMetrics?.engagement_path !== 'item.engagement') throw new Error('adapter metric selection provenance missing');
+  const [baidu] = await collectDailyHot({ DAILYHOT_BASE: 'https://generic.example' }, 'baidu');
+  if (baidu.heat !== 123 || baidu.raw?.trendRadarMetrics?.heat_path !== 'item.hot_score') throw new Error(`Baidu must use explicit hot_score and not rank/score/view, got ${JSON.stringify(baidu)}`);
+  const [toutiao] = await collectDailyHot({ DAILYHOT_BASE: 'https://generic.example' }, 'toutiao');
+  if (toutiao.heat !== 456 || toutiao.raw?.trendRadarMetrics?.heat_path !== 'item.HotValue') throw new Error(`Toutiao must use HotValue and not score/view, got ${JSON.stringify(toutiao)}`);
+  const [hupu] = await collectDailyHot({ DAILYHOT_BASE: 'https://generic.example' }, 'hupu');
+  if (hupu.heat !== 321 || hupu.raw?.trendRadarMetrics?.heat_path !== 'item.hotValue') throw new Error(`Hupu must use hotValue and not score/view, got ${JSON.stringify(hupu)}`);
   const zhihu = await collectDailyHot({}, 'zhihu');
   if (zhihu[0]?.heat !== 120000 || zhihu[1]?.heat !== null) throw new Error(`Zhihu missing displayed heat must stay null, got ${zhihu.map(item => item.heat).join(',')}`);
   const [bilibili] = await collectDailyHot({}, 'bilibili');
