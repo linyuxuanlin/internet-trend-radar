@@ -79,6 +79,17 @@ try {
       throw new Error(`${source} RSS metrics must remain null`);
     }
   }
+  for (const source of ['baidu', 'toutiao', 'hupu']) {
+    const fallback = metricMetadata(source);
+    const official = metricMetadata(source, 'official-page');
+    const fallbackFields = fallback.heat.split('(')[0];
+    if (/(^|[| ])(?:score|view|rank|index)(?:[| ]|$)/.test(fallbackFields)) {
+      throw new Error(`${source} fallback metadata must exclude rank/score/view/index fields`);
+    }
+    if (!official.heat.includes('official') || official.heat === fallback.heat) {
+      throw new Error(`${source} official-page metadata must be distinct from fallback metadata`);
+    }
+  }
   console.log('Source metric semantics validated: V2EX replies and generic likes are engagement only');
 } finally {
   globalThis.fetch = originalFetch;
