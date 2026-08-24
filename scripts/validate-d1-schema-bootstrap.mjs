@@ -10,10 +10,15 @@ const db = {
     prepared.push(sql);
     assert(!/PRAGMA\s+foreign_keys\s*=\s*(ON|1)/i.test(sql), 'schema bootstrap must not toggle D1 foreign_keys');
     return {
+      bind() { return this; },
       async run() {
         return { success: true, meta: { changes: 0 } };
       }
     };
+  },
+  async batch(statements) {
+    prepared.push(...statements.map(() => 'BATCH UPDATE'));
+    return { success: true };
   },
   async exec() {
     throw new Error('real D1-compatible bootstrap must prefer prepare().run() over exec()');
