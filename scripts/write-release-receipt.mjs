@@ -17,6 +17,21 @@ if (dashboard.preview !== false || dashboard.ready !== true) throw new Error('re
 const sources = Array.isArray(dashboard.sources) ? dashboard.sources : [];
 const healthySources = sources.filter(source => source?.last_success_at && Number(source?.last_item_count || 0) > 0);
 const directCnSources = healthySources.filter(source => source?.region === 'cn' && ['official-api', 'official-rss', 'official-page'].includes(source?.kind));
+const sourceHealth = Array.isArray(health.sourceHealth) ? health.sourceHealth : [];
+const socialIds = ['weibo', 'zhihu', 'douyin'];
+const socialUpstreams = Object.fromEntries(socialIds.map(id => {
+  const row = sourceHealth.find(item => item?.id === id);
+  if (!row?.healthy) throw new Error(`${id}: release receipt requires healthy social source`);
+  const upstream = String(row.upstream || '').trim();
+  const provider = String(row.upstreamProvider || '').trim();
+  const stage = String(row.upstreamStage || '').trim();
+  if (!/^https:\/\//.test(upstream)) throw new Error(`${id}: release receipt missing HTTPS upstream`);
+  if (!provider || provider === 'unknown') throw new Error(`${id}: release receipt missing upstream provider`);
+  if (!stage || ['unknown', 'failed'].includes(stage)) throw new Error(`${id}: release receipt missing upstream stage`);
+  return [id, { provider, stage, upstream }];
+}));
+const fallbackSocialSources = socialIds.filter(id => socialUpstreams[id].stage !== 'official-direct');
+
 const receipt = {
   buildSha,
   generatedAt: dashboard.generatedAt,
@@ -25,6 +40,8 @@ const receipt = {
   topics: Array.isArray(dashboard.topics) ? dashboard.topics.length : 0,
   healthySources: healthySources.length,
   directCnSources: directCnSources.length,
+  socialUpstreams,
+  fallbackSocialSources,
   aiMatched: Number(dashboard?.ai?.matchedCount || 0),
   opportunitiesStatus: opportunities.status,
   opportunities: Array.isArray(opportunities.opportunities) ? opportunities.opportunities.length : 0
