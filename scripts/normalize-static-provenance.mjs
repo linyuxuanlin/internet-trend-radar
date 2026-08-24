@@ -20,7 +20,7 @@ for (const topic of dashboard.topics || []) {
     const source = sourceById.get(sourceId) || {};
     const metricDefinition = source.kind === 'official-rss'
       ? { heat: null, engagement: null, note: 'official RSS feed; publication feed does not expose a native heat or engagement counter' }
-      : metricMetadata(sourceId);
+      : metricMetadata(sourceId, source.kind);
     const upstream = ref.upstream || previous.upstream || source.latest_upstream || source.upstream || null;
     const observedUpstreams = [...new Set([
       ...(Array.isArray(previous.observed_upstreams) ? previous.observed_upstreams : []),
