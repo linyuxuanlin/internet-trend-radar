@@ -45,4 +45,13 @@ try {
 }
 
 if (!nullContractRejected) throw new Error('source metric contract allowed a value for a NULL-defined metric');
+
+validateMetricProvenance([{ sourceId: 'baidu', heat: 123, raw: { trendRadarMetrics: { heat_path: 'item.hot_score' } } }], 'allowed-adapter-field-fixture');
+let disallowedPathRejected = false;
+try {
+  validateMetricProvenance([{ sourceId: 'baidu', heat: 999, raw: { trendRadarMetrics: { heat_path: 'item.score' } } }], 'disallowed-adapter-field-fixture');
+} catch (error) {
+  disallowedPathRejected = String(error?.message || error).includes('not an allowed adapter field');
+}
+if (!disallowedPathRejected) throw new Error('source metric contract allowed an undocumented heat path');
 console.log('Raw provenance integrity validated: upstream and non-null metric values require explicit provenance');
