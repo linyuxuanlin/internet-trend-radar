@@ -54,4 +54,12 @@ try {
   disallowedPathRejected = String(error?.message || error).includes('not an allowed adapter field');
 }
 if (!disallowedPathRejected) throw new Error('source metric contract allowed an undocumented heat path');
+
+let disallowedOfficialPathRejected = false;
+try {
+  validateMetricProvenance([{ sourceId: 'github', heat: 1, raw: { trendRadarMetrics: { heat_path: 'repository.watchers_count' } } }], 'disallowed-official-field-fixture');
+} catch (error) {
+  disallowedOfficialPathRejected = String(error?.message || error).includes('not an allowed adapter field');
+}
+if (!disallowedOfficialPathRejected) throw new Error('official source metric contract allowed an undocumented field');
 console.log('Raw provenance integrity validated: upstream and non-null metric values require explicit provenance');
