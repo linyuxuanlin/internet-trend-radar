@@ -1,11 +1,44 @@
 import { safeJsonParse } from './utils.js';
 
+function balancedJsonObject(text) {
+  const source = String(text || '');
+  for (let start = 0; start < source.length; start++) {
+    if (source[start] !== '{') continue;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < source.length; i++) {
+      const ch = source[i];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (ch === '\\') escaped = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') {
+        inString = true;
+        continue;
+      }
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) return source.slice(start, i + 1);
+      }
+    }
+  }
+  return null;
+}
+
 function extractJson(text) {
   if (!text) return null;
-  const direct = safeJsonParse(text, null);
+  const source = String(text).trim();
+  const direct = safeJsonParse(source, null);
   if (direct) return direct;
-  const m = String(text).match(/\{[\s\S]*\}/);
-  return m ? safeJsonParse(m[0], null) : null;
+  const unfenced = source.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  const unfencedDirect = safeJsonParse(unfenced, null);
+  if (unfencedDirect) return unfencedDirect;
+  const candidate = balancedJsonObject(unfenced);
+  return candidate ? safeJsonParse(candidate, null) : null;
 }
 
 function extractModelPayload(out) {
@@ -22,6 +55,19 @@ function extractModelPayload(out) {
 
 function hasLowValuePhrase(text) {
   return /值得关注|热度较高|持续升温|具有重要意义|前景广阔|机会巨大/.test(String(text || ''));
+}
+
+function comparableText(text) {
+  return String(text || '').toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '');
+}
+
+function isTitleEcho(summary, topicTitle) {
+  const normalizedSummary = comparableText(summary);
+  const normalizedTitle = comparableText(topicTitle);
+  if (!normalizedTitle || !normalizedSummary.includes(normalizedTitle)) return false;
+  if (normalizedSummary === normalizedTitle) return true;
+  const novel = normalizedSummary.split(normalizedTitle).join('');
+  return novel.length < 12;
 }
 
 function sanitizeErrorDetail(value) {
@@ -134,9 +180,9 @@ function normalizeAnalysis(parsed, model, topicTitle) {
       })).filter(o => o.idea && o.rationale)
     : [];
   if (!summary || !whyNow || opportunities.length < 1) return { analysis: null, failureReason: 'incomplete-output' };
+  if (isTitleEcho(summary, topicTitle)) return { analysis: null, failureReason: 'title-echo' };
   if (summary.length < 20 || whyNow.length < 20) return { analysis: null, failureReason: 'too-short' };
   if (hasLowValuePhrase(summary) || hasLowValuePhrase(whyNow)) return { analysis: null, failureReason: 'low-value-language' };
-  if (summary === topicTitle || summary.includes(topicTitle)) return { analysis: null, failureReason: 'title-echo' };
   return { analysis: { summary, why_now: whyNow, opportunities, risks }, failureReason: null };
 }
 
@@ -161,11 +207,24 @@ const AI_RESPONSE_SCHEMA = {
   required: ['summary', 'why_now', 'opportunities', 'risks']
 };
 
+const JSON_MODE_MODELS = new Set([
+  '@cf/meta/llama-3.1-8b-instruct-fast',
+  '@cf/meta/llama-3.1-70b-instruct',
+  '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  '@cf/meta/llama-3-8b-instruct',
+  '@cf/meta/llama-3.1-8b-instruct',
+  '@cf/meta/llama-3.2-11b-vision-instruct',
+  '@hf/nousresearch/hermes-2-pro-mistral-7b',
+  '@hf/thebloke/deepseek-coder-6.7b-instruct-awq',
+  '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b'
+]);
+
 const FALLBACK_REASONS = new Set(['invalid-json', 'incomplete-output', 'too-short', 'low-value-language', 'title-echo', 'empty-model-response']);
 
 function buildPrompt(topic, evidence) {
   return `你是互联网趋势分析师和产品机会研究员。基于真实证据分析热点。
 不要复述标题，不要写新闻摘要模板，不要把热度等同于商业价值。
+summary 即使提到主题，也必须补充至少一个证据支持的新事实、状态变化或因果信息，不能只把标题换一种说法。
 
 主题：${topic.canonical_title}
 分类：${topic.category}
@@ -250,7 +309,8 @@ export async function analyzeTopicDetailed(env, topic, evidence) {
   if (!env.AI) return { analysis: null, failureReason: 'missing-ai-binding', rawText: '', model: null, attemptTrace: [] };
   const model = env.AI_MODEL || '@cf/zai-org/glm-4.7-flash';
   try {
-    const primary = await runModel(env, model, topic, evidence);
+    const structuredPrimary = JSON_MODE_MODELS.has(model) && env.AI_DISABLE_JSON_MODE !== '1';
+    const primary = await runModel(env, model, topic, evidence, { structured: structuredPrimary });
     if (primary.analysis || env.AI_DISABLE_FALLBACK === '1') return { ...primary, attemptTrace: [asAttempt(primary)] };
     if (FALLBACK_REASONS.has(primary.failureReason)) return runStructuredFallback(env, topic, evidence, primary, primary.failureReason);
     return { ...primary, attemptTrace: [asAttempt(primary)] };
