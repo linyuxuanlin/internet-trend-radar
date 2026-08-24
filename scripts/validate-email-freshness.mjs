@@ -13,6 +13,9 @@ if (!email.includes('evidence_sources') || !email.includes('证据来源')) {
 if (!email.includes('evidence_detail') || !email.includes("trendRadarMetrics.heat_path") || !email.includes("trendRadarUpstream") || !email.includes('NULL 表示上游未提供')) {
   throw new Error('email digest must expose raw metric values, field paths, upstream, and NULL semantics');
 }
+if (!email.includes('趋势指数是派生指标，不是平台原始热度') || !email.includes('heat=') || !email.includes('engagement=')) {
+  throw new Error('email digest must distinguish derived trend index from source-native metrics');
+}
 if (!email.includes("currentSourcePredicate('active_source')") || !email.includes("currentSourcePredicate('current_source')")) {
   throw new Error('email digest must exclude stale or failed sources from both evidence and topic selection');
 }
