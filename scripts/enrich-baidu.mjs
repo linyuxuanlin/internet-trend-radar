@@ -77,8 +77,10 @@ function normalizeRows(raw) {
   return raw.map((row, index) => ({
     title: String(row?.word || row?.query || row?.title || '').trim(),
     desc: String(row?.desc || row?.description || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(),
-    heat: row?.hotScore ?? row?.hot_score ?? row?.index ?? null,
-    heat_path: row?.hotScore !== undefined ? 'item.hotScore' : row?.hot_score !== undefined ? 'item.hot_score' : row?.index !== undefined ? 'item.index' : null,
+    // `index` is a ranking/index field in Baidu payloads, not a heat counter.
+    // Never promote it to raw heat when the upstream omits hotScore.
+    heat: row?.hotScore ?? row?.hot_score ?? null,
+    heat_path: row?.hotScore !== undefined ? 'item.hotScore' : row?.hot_score !== undefined ? 'item.hot_score' : null,
     url: String(row?.url || row?.rawUrl || row?.appUrl || '').trim(),
     rank: index + 1
   })).filter(row => row.title);
