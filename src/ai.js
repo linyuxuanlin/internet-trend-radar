@@ -464,7 +464,7 @@ export async function enrichTopTopics(env, options = {}) {
                WHEN json_extract(r.raw_json,'$.trendRadarUpstream') LIKE '%api-hot.imsyy.top%' OR json_extract(r.raw_json,'$.trendRadarUpstream') LIKE '%api.guole.fun%' THEN 'aggregator-fallback'
                WHEN json_extract(r.raw_json,'$.trendRadarUpstream') LIKE '%aa1.cn%' OR json_extract(r.raw_json,'$.trendRadarUpstream') LIKE '%luochen.sbs%' OR json_extract(r.raw_json,'$.trendRadarUpstream') LIKE '%fanyia.cn%' THEN 'mirror-fallback'
                WHEN ts.source_id='36kr' AND json_extract(r.raw_json,'$.trendRadarUpstream') LIKE 'https://www.36kr.com/feed%' THEN 'official-rss'
-               WHEN ts.source_id IN ('hackernews','github','weibo','zhihu','v2ex','juejin','36kr','bilibili') THEN 'official-api'
+               WHEN ts.source_id IN ('hackernews','github','weibo','zhihu','douyin','v2ex','juejin','36kr','bilibili') THEN 'official-api'
                ELSE 'source-api'
              END AS source_kind,
              r.heat AS raw_heat,r.engagement AS raw_engagement,
