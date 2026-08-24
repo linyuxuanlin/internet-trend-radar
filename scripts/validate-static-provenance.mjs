@@ -67,13 +67,16 @@ for (const topic of dashboard.topics || []) {
     const definition = signal.metric_definition || {};
     if (definition.heat === null && signal.raw_heat_max !== null) throw new Error(`topic ${topic.id} ${signal.source_id} reports heat despite NULL metric definition`);
     if (definition.engagement === null && signal.raw_engagement_max !== null) throw new Error(`topic ${topic.id} ${signal.source_id} reports engagement despite NULL metric definition`);
-    if (signal.raw_heat_max !== null && !String(signal.metric_paths?.heat || '').trim()) throw new Error(`topic ${topic.id} ${signal.source_id} is missing heat metric path`);
-    if (signal.raw_engagement_max !== null && !String(signal.metric_paths?.engagement || '').trim()) throw new Error(`topic ${topic.id} ${signal.source_id} is missing engagement metric path`);
+      if (signal.raw_heat_max !== null && !String(signal.metric_paths?.heat || '').trim()) throw new Error(`topic ${topic.id} ${signal.source_id} is missing heat metric path`);
+      if (signal.raw_engagement_max !== null && !String(signal.metric_paths?.engagement || '').trim()) throw new Error(`topic ${topic.id} ${signal.source_id} is missing engagement metric path`);
     for (const metric of ['heat', 'engagement']) {
       const evidence = signal.peak_evidence[metric];
       if (signal[`raw_${metric}_max`] !== null) {
         if (!evidence || !validUpstream(evidence.upstream) || !signal.observed_upstreams.includes(evidence.upstream)) {
           throw new Error(`topic ${topic.id} ${signal.source_id} has incomplete ${metric} peak evidence`);
+        }
+        if (!String(evidence.metric_path || signal.metric_paths?.[metric] || '').trim()) {
+          throw new Error(`topic ${topic.id} ${signal.source_id} has ${metric} peak evidence without metric path`);
         }
       }
     }
