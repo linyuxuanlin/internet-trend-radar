@@ -2,8 +2,16 @@ name: AI Freshness Coverage
 
 on:
   pull_request:
-  push:
-    branches: [main]
+  # Pages is deployed after CI completes. Probe after that deployment rather
+  # than on the preceding push, otherwise the check races the CDN and reports
+  # a false release-SHA mismatch.
+  workflow_run:
+    workflows:
+      - Deploy GitHub Pages
+    branches:
+      - main
+    types:
+      - completed
   workflow_dispatch:
   schedule:
     # Pages refresh runs at :17. Probe later so CDN propagation has time to settle.
@@ -11,6 +19,7 @@ on:
 
 jobs:
   freshness:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -40,7 +49,7 @@ jobs:
           DASHBOARD_URL: https://linyuxuanlin.github.io/internet-trend-radar/data/dashboard.json
           HEALTH_URL: https://linyuxuanlin.github.io/internet-trend-radar/data/health.json
           OPPORTUNITIES_URL: https://linyuxuanlin.github.io/internet-trend-radar/data/opportunities.json
-          EXPECTED_BUILD_SHA: ${{ github.sha }}
+          EXPECTED_BUILD_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
           FETCH_TIMEOUT_MS: 15000
           MAX_RELEASE_AGE_MS: 10800000
         run: |
@@ -51,7 +60,7 @@ jobs:
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         env:
           RELEASE_URL: https://linyuxuanlin.github.io/internet-trend-radar/data/release.json
-          EXPECTED_BUILD_SHA: ${{ github.sha }}
+          EXPECTED_BUILD_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
           FETCH_TIMEOUT_MS: 15000
           MAX_RELEASE_AGE_MS: 10800000
         run: |
