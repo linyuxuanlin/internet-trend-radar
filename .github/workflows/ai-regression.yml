@@ -13,6 +13,7 @@ jobs:
       - name: Validate regression analyzer deterministically
         run: |
           node scripts/validate-ai-quota-circuit.mjs
+          node scripts/check-live-ai-output-quality.mjs --self-test
 
           cat > /tmp/ai-debug-good.json <<'JSON'
           {
@@ -57,3 +58,13 @@ jobs:
           AI_REGRESSION_MIN_ATTEMPTS: '10'
           AI_REGRESSION_MAX_INVALID_RATE: '0.5'
         run: node scripts/check-live-ai-regression.mjs
+
+      - name: Probe production 8B output quality
+        env:
+          AI_DEBUG_URL: https://internet-trend-radar.linyuxuanlin.workers.dev/api/debug
+          AI_OUTPUT_QUALITY_MIN_ATTEMPTS: '5'
+          AI_OUTPUT_QUALITY_MIN_SUCCESS_RATE: '50'
+          AI_OUTPUT_QUALITY_MAX_INVALID_JSON_RATE: '0.25'
+          AI_OUTPUT_QUALITY_MAX_TITLE_ECHO_RATE: '0.25'
+          AI_OUTPUT_QUALITY_MAX_COMBINED_WASTE_RATE: '0.40'
+        run: node scripts/check-live-ai-output-quality.mjs
