@@ -57,6 +57,21 @@ jobs:
               return;
             }
             core.info(`CI gate passed for ${targetSha} via run ${successful.id}`);
+      - name: Require target is current main
+        uses: actions/github-script@v8
+        env:
+          TARGET_SHA: ${{ env.TARGET_SHA }}
+        with:
+          script: |
+            const targetSha = process.env.TARGET_SHA;
+            const { owner, repo } = context.repo;
+            const ref = await github.rest.git.getRef({ owner, repo, ref: 'heads/main' });
+            const currentSha = ref.data.object.sha;
+            if (currentSha !== targetSha) {
+              core.setFailed(`Refusing stale Pages deploy: target=${targetSha} current_main=${currentSha}`);
+              return;
+            }
+            core.info(`Pages target is current main: ${currentSha}`);
       - name: Checkout verified revision
         uses: actions/checkout@v7
         with:
