@@ -26,7 +26,7 @@ const STATIC_SOURCE_METRICS = {
 };
 
 export function metricMetadata(sourceId, kind = null) {
-  if (kind === 'official-page' && STATIC_SOURCE_METRICS[sourceId]) return STATIC_SOURCE_METRICS[sourceId];
+  if (['official-page', 'official-api'].includes(kind) && STATIC_SOURCE_METRICS[sourceId]) return STATIC_SOURCE_METRICS[sourceId];
   return SOURCE_METRICS[sourceId] || {
     heat: 'adapter-defined source-native field',
     engagement: null,
