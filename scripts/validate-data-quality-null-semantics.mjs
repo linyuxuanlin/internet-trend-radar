@@ -55,4 +55,7 @@ if (!/definition_heat_path_violations/.test(index) || !/definition_engagement_pa
 if (!/json_each\(s\.metadata_json,'\$\.heat_paths'\)/.test(index) || !/json_each\(s\.metadata_json,'\$\.heat_paths'\)/.test(api)) {
   throw new Error('runtime data quality must accept only declared alternative heat paths');
 }
+if (!/heat_peak_metric_path/.test(api) || !/engagement_peak_metric_path/.test(api) || !/metric_path: row\.heat_peak_metric_path/.test(api)) {
+  throw new Error('public peak evidence must retain the metric path that produced the peak');
+}
 console.log('Data-quality null semantics validated: zero is observed, NULL is missing');
