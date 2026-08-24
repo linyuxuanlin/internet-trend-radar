@@ -1,3 +1,5 @@
+import { SOURCE_METRICS, metricMetadata } from './source-metadata.js';
+
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS sources (
   id TEXT PRIMARY KEY,
@@ -190,13 +192,28 @@ async function bootstrapSchema(db) {
   return { statementCount: SCHEMA_STATEMENTS.length, results };
 }
 
+async function syncSourceMetricMetadata(db) {
+  // Metric definitions are application contract data, not user data. Keep the
+  // D1 diagnostic cache aligned as soon as a new Worker isolate bootstraps;
+  // otherwise /api/debug could report a stale field definition until the next
+  // scheduled collection happens to run.
+  if (typeof db.batch !== 'function' || typeof db.prepare !== 'function') return;
+  const statements = Object.keys(SOURCE_METRICS).map(sourceId => db.prepare(
+    'UPDATE sources SET metadata_json=? WHERE id=?'
+  ).bind(JSON.stringify(metricMetadata(sourceId)), sourceId));
+  if (statements.length) await db.batch(statements);
+}
+
 export async function ensureSchema(env) {
   if (!env.DB) return { ok: false, reason: 'missing-db' };
   const db = env.DB;
   let promise = schemaPromises.get(db);
   if (!promise) {
     promise = bootstrapSchema(db)
-      .then(result => ({ ok: true, result }))
+      .then(async result => {
+        await syncSourceMetricMetadata(db);
+        return { ok: true, result };
+      })
       .catch(error => {
         schemaPromises.delete(db);
         throw error;
