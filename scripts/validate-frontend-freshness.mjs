@@ -7,4 +7,7 @@ if (!html.includes('sourceAgeHours(s)!==null&&sourceAgeHours(s)>2')) throw new E
 if (/freshness_status==='healthy'\|\|\(s\.last_success_at&&\!s\.last_error\)/.test(html)) {
   throw new Error('frontend still treats any historical success as healthy');
 }
+if (!(html.includes('实际字段：') || html.includes('实际字段（当前值）')) || !html.includes('s.metric_paths') || !html.includes('s.source_kind')) {
+  throw new Error('frontend detail must expose the observed metric path and upstream kind');
+}
 console.log('Frontend freshness semantics validated: stale sources are not presented as healthy');
