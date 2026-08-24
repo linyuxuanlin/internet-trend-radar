@@ -1,5 +1,5 @@
 const DEFAULT_DASHBOARD_URL = 'https://radar.wiki-power.com/data/dashboard.json';
-const DEFAULT_RELEASE_URL = 'https://radar.wiki-power.com/data/release.json';
+const DEFAULT_RELEASE_URL = 'https://linyuxuanlin.github.io/internet-trend-radar/data/release.json';
 
 function isVerified(topic) {
   const summary = String(topic?.ai_summary || '').trim();

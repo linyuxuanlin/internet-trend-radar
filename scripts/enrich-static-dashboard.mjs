@@ -1,5 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { categoryFor, fingerprintTitle, scoreItem, topicStatus } from '../src/utils.js';
+import { metricMetadata } from '../src/source-metadata.js';
 
 const DASHBOARD = new URL('../public/data/dashboard.json', import.meta.url);
 const nowIso = new Date().toISOString();
