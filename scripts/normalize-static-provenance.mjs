@@ -26,20 +26,31 @@ for (const topic of dashboard.topics || []) {
       ...(Array.isArray(previous.observed_upstreams) ? previous.observed_upstreams : []),
       upstream
     ].filter(Boolean))];
+    const metricPaths = previous.metric_paths && typeof previous.metric_paths === 'object' ? previous.metric_paths : null;
     const peakEvidence = previous.peak_evidence && typeof previous.peak_evidence === 'object'
       ? previous.peak_evidence
       : {
           heat: previous.raw_heat_max == null ? null : {
             captured_at: previous.latest_captured_at || ref.captured_at || topic.last_seen_at || null,
             upstream,
+            metric_path: metricPaths?.heat || null,
             source_kind: previous.source_kind || source.kind || null
           },
           engagement: previous.raw_engagement_max == null ? null : {
             captured_at: previous.latest_captured_at || ref.captured_at || topic.last_seen_at || null,
             upstream,
+            metric_path: metricPaths?.engagement || null,
             source_kind: previous.source_kind || source.kind || null
           }
         };
+    for (const metric of ['heat', 'engagement']) {
+      if (peakEvidence[metric] && typeof peakEvidence[metric] === 'object') {
+        peakEvidence[metric] = {
+          ...peakEvidence[metric],
+          metric_path: peakEvidence[metric].metric_path || metricPaths?.[metric] || null
+        };
+      }
+    }
     return {
       source_id: sourceId,
       source_kind: source.kind || previous.source_kind || null,
@@ -54,7 +65,7 @@ for (const topic of dashboard.topics || []) {
       observed_upstreams: observedUpstreams,
       peak_evidence: peakEvidence,
       upstream,
-      metric_paths: previous.metric_paths || null,
+      metric_paths: metricPaths,
       units: 'source-native; not comparable across platforms'
     };
   });
