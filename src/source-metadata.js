@@ -1,22 +1,22 @@
 // These definitions describe the upstream fields used by each adapter. They
 // are documentation-as-data and are exposed by the diagnostics/dashboard API.
 export const SOURCE_METRICS = {
-  weibo: { heat: 'adapter item.hot <- data.realtime[].num', engagement: null, note: 'official hot-search count' },
-  zhihu: { heat: 'adapter item.hot <- data[].detail_text (parsed)', engagement: null, note: 'official displayed heat text' },
+  weibo: { heat: 'adapter item.hot <- data.realtime[].num', heat_paths: ['adapter item.hot <- data.realtime[].num'], engagement: null, note: 'official hot-search count' },
+  zhihu: { heat: 'adapter item.hot <- data[].detail_text (parsed)', heat_paths: ['adapter item.hot <- data[].detail_text (parsed)'], engagement: null, note: 'official displayed heat text' },
   douyin: { heat: 'word_list[].hot_value|word_list[].hot|word_list[].score|data.list[].hotness|data.list[].hot_value|data.list[].hot|data.list[].score|data[].hot|data[].hotness|data[].hot_value|data[].score', heat_paths: ['word_list[].hot_value', 'word_list[].hot', 'word_list[].score', 'data.list[].hotness', 'data.list[].hot_value', 'data.list[].hot', 'data.list[].score', 'data[].hot', 'data[].hotness', 'data[].hot_value', 'data[].score'], engagement: null, note: 'source-native hot-list value; exact selected field is retained per item' },
   sspai: { heat: null, engagement: null, note: 'official RSS feed; publication feed does not expose a native heat or engagement counter' },
-  bilibili: { heat: 'data.list[].stat.view', engagement: 'stat.like+reply+coin+favorite+share+danmaku', note: 'official video statistics' },
-  v2ex: { heat: null, engagement: 'topics[].replies', note: 'official hot-topics API; replies are interaction count, not heat' },
-  juejin: { heat: 'article_info.view_count', engagement: 'digg_count+comment_count+collect_count+share_count', note: 'official recommendation API' },
-  '36kr': { heat: 'templateMaterial.statRead', engagement: 'statCollect+statComment+statPraise', note: 'official Gateway hot-rank API; RSS fallback may omit metrics' },
+  bilibili: { heat: 'data.list[].stat.view', heat_paths: ['data.list[].stat.view'], engagement: 'stat.like+reply+coin+favorite+share+danmaku', engagement_paths: ['stat.like+reply+coin+favorite+share+danmaku'], note: 'official video statistics' },
+  v2ex: { heat: null, engagement: 'topics[].replies', engagement_paths: ['topics[].replies', 'item.replies'], note: 'official hot-topics API; replies are interaction count, not heat' },
+  juejin: { heat: 'article_info.view_count', heat_paths: ['article_info.view_count'], engagement: 'digg_count+comment_count+collect_count+share_count', engagement_paths: ['digg_count+comment_count+collect_count+share_count'], note: 'official recommendation API' },
+  '36kr': { heat: 'templateMaterial.statRead', heat_paths: ['templateMaterial.statRead'], engagement: 'statCollect+statComment+statPraise', engagement_paths: ['statCollect+statComment+statPraise'], note: 'official Gateway hot-rank API; RSS fallback may omit metrics' },
   baidu: { heat: 'fallback item.hotScore|item.hot_score|item.hot|item.hotValue|item.hot_value|item.hotness|item.heat (NULL when absent; score/view/index excluded)', heat_paths: ['item.hotScore', 'item.hot_score', 'item.hot', 'item.hotValue', 'item.hot_value', 'item.hotness', 'item.heat'], engagement: null, note: 'shared fallback contract; ranking/index/score/view fields are not promoted to heat' },
   toutiao: { heat: 'fallback item.HotValue|item.hot_value|item.hotValue|item.Heat|item.heat|item.hot|item.hotness (score/view excluded)', heat_paths: ['item.HotValue', 'item.hot_value', 'item.hotValue', 'item.Heat', 'item.heat', 'item.hot', 'item.hotness'], engagement: null, note: 'shared fallback contract; no engagement counter is inferred' },
   hupu: { heat: 'fallback item.heat|item.hot|item.hotValue|item.hot_value|item.hotness (score/view/rank excluded)', heat_paths: ['item.heat', 'item.hot', 'item.hotValue', 'item.hot_value', 'item.hotness'], engagement: null, note: 'shared fallback contract; rank and tag identifiers are not heat' },
   ithome: { heat: null, engagement: null, note: 'official RSS feed; publication feed does not expose a native heat or engagement counter' },
   solidot: { heat: null, engagement: null, note: 'official RSS feed; publication feed does not expose a native heat or engagement counter' },
-  hackernews: { heat: 'item.score', engagement: 'item.descendants', note: 'official Firebase item API' },
-  github: { heat: 'repository.stargazers_count', engagement: 'repository.forks_count', note: 'official GitHub Search API; repositories created since the UTC lookback date, sorted by stars; not GitHub Trending' },
-  xiaohongshu: { heat: 'noteCard.interactInfo.likedCount', engagement: 'likedCount+collectedCount+commentCount', note: 'external xiaohongshu-mcp bridge' }
+  hackernews: { heat: 'item.score', heat_paths: ['item.score'], engagement: 'item.descendants', engagement_paths: ['item.descendants'], note: 'official Firebase item API' },
+  github: { heat: 'repository.stargazers_count', heat_paths: ['repository.stargazers_count'], engagement: 'repository.forks_count', engagement_paths: ['repository.forks_count'], note: 'official GitHub Search API; repositories created since the UTC lookback date, sorted by stars; not GitHub Trending' },
+  xiaohongshu: { heat: 'noteCard.interactInfo.likedCount', heat_paths: ['noteCard.interactInfo.likedCount'], engagement: 'likedCount+collectedCount+commentCount', engagement_paths: ['likedCount+collectedCount+commentCount'], note: 'external xiaohongshu-mcp bridge' }
 };
 
 const STATIC_SOURCE_METRICS = {
