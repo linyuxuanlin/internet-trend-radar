@@ -28,6 +28,14 @@ function validAI(topic, now) {
   if (!Number.isFinite(updated)) return false;
   const age = now - updated;
   if (age < -5 * 60 * 1000 || age > maxAgeMs) return false;
+  const signals = Array.isArray(topic.raw_signals) ? topic.raw_signals : [];
+  if (!signals.length) return false;
+  if (signals.some(signal => {
+    const capturedAt = Date.parse(signal?.latest_captured_at || '');
+    const upstream = String(signal?.upstream || '').trim();
+    const observed = Array.isArray(signal?.observed_upstreams) ? signal.observed_upstreams : [];
+    return !upstream || !Number.isFinite(capturedAt) || now - capturedAt < -5 * 60 * 1000 || now - capturedAt > maxAgeMs || (observed.length > 0 && !observed.includes(upstream));
+  })) return false;
   return topic.opportunities.every(o => String(o?.idea || '').trim() && String(o?.rationale || '').trim());
 }
 
@@ -46,6 +54,8 @@ for (const sourceUrl of sourceUrls) {
       if (!response.ok) throw new Error(`AI source HTTP ${response.status}`);
       const candidate = await response.json();
       if (candidate?.preview !== false || candidate?.ready !== true || !Array.isArray(candidate?.topics)) throw new Error('AI source is not a real-data ready dashboard');
+      const sourceGeneratedAt = Date.parse(candidate.generatedAt || '');
+      if (!Number.isFinite(sourceGeneratedAt) || Date.now() - sourceGeneratedAt < -5 * 60 * 1000 || Date.now() - sourceGeneratedAt > maxAgeMs) throw new Error('AI source snapshot is stale or invalid');
       source = candidate;
       sourceUrlUsed = sourceUrl;
       fetchError = null;
