@@ -1,4 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises';
+import { validateAIEvidenceClaims } from '../src/ai.js';
 
 const dashboardPath = new URL('../public/data/dashboard.json', import.meta.url);
 const productionSourceUrl = process.env.AI_SOURCE_URL || 'https://radar.wiki-power.com/api/dashboard';
@@ -36,6 +37,12 @@ function validAI(topic, now) {
     const observed = Array.isArray(signal?.observed_upstreams) ? signal.observed_upstreams : [];
     return !upstream || !Number.isFinite(capturedAt) || now - capturedAt < -5 * 60 * 1000 || now - capturedAt > maxAgeMs || (observed.length > 0 && !observed.includes(upstream));
   })) return false;
+  if (validateAIEvidenceClaims({
+    summary: topic.ai_summary,
+    why_now: topic.ai_why_now,
+    risks: topic.ai_risks,
+    opportunities: topic.opportunities
+  }, topic, signals)) return false;
   return topic.opportunities.every(o => String(o?.idea || '').trim() && String(o?.rationale || '').trim());
 }
 
