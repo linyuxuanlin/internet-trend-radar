@@ -449,9 +449,17 @@ async function dashboard(env, url) {
         SUM(CASE WHEN json_type(s.metadata_json,'$.heat') = 'null' AND r.heat IS NOT NULL THEN 1 ELSE 0 END) AS contract_heat_violations,
         SUM(CASE WHEN json_type(s.metadata_json,'$.engagement') = 'null' AND r.engagement IS NOT NULL THEN 1 ELSE 0 END) AS contract_engagement_violations,
         SUM(CASE WHEN r.heat IS NOT NULL AND ${officialMetricUpstreamPredicate('s.id')}
-                  AND json_extract(r.raw_json,'$.trendRadarMetrics.heat_path') != json_extract(s.metadata_json,'$.heat') THEN 1 ELSE 0 END) AS definition_heat_path_violations,
+                  AND CASE WHEN json_type(s.metadata_json,'$.heat_paths') = 'array'
+                           THEN NOT EXISTS (SELECT 1 FROM json_each(s.metadata_json,'$.heat_paths') p
+                                            WHERE p.value = json_extract(r.raw_json,'$.trendRadarMetrics.heat_path'))
+                           ELSE json_extract(r.raw_json,'$.trendRadarMetrics.heat_path') != json_extract(s.metadata_json,'$.heat')
+                      END THEN 1 ELSE 0 END) AS definition_heat_path_violations,
         SUM(CASE WHEN r.engagement IS NOT NULL AND ${officialMetricUpstreamPredicate('s.id')}
-                  AND json_extract(r.raw_json,'$.trendRadarMetrics.engagement_path') != json_extract(s.metadata_json,'$.engagement') THEN 1 ELSE 0 END) AS definition_engagement_path_violations
+                  AND CASE WHEN json_type(s.metadata_json,'$.engagement_paths') = 'array'
+                           THEN NOT EXISTS (SELECT 1 FROM json_each(s.metadata_json,'$.engagement_paths') p
+                                            WHERE p.value = json_extract(r.raw_json,'$.trendRadarMetrics.engagement_path'))
+                           ELSE json_extract(r.raw_json,'$.trendRadarMetrics.engagement_path') != json_extract(s.metadata_json,'$.engagement')
+                      END THEN 1 ELSE 0 END) AS definition_engagement_path_violations
       FROM raw_items r
       LEFT JOIN sources s ON s.id=r.source_id
     `).first();
