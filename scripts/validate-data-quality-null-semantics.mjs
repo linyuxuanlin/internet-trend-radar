@@ -31,6 +31,12 @@ if (!/heat = null, engagement = null/.test(staticBuilder)) {
 if (!/heat = null, engagement = null/.test(staticEnricher)) {
   throw new Error('static enrichment defaults must preserve missing metrics as NULL');
 }
+if (!/old\.raw_signals = \[\.\.\.signalBySource\.values\(\)\]/.test(staticEnricher) || !/old\.source_count = new Set\(old\.sources\.map\(s => s\.source_id\)\)\.size/.test(staticEnricher)) {
+  throw new Error('static enrichment must merge per-source evidence and derive unique source_count');
+}
+if (!/existing\.raw_signals = \[\.\.\.signalBySource\.values\(\)\]/.test(staticBuilder) || !/existing\.source_count = new Set\(existing\.sources\.map\(source => source\.source_id\)\)\.size/.test(staticBuilder)) {
+  throw new Error('static duplicate merge must preserve per-source evidence without summing platform metrics');
+}
 if (!/CASE[\s\S]*AS source_kind/.test(ai) || !/trendRadarMetrics\.heat_path/.test(ai) || !/trendRadarMetrics\.engagement_path/.test(ai)) {
   throw new Error('AI evidence must derive source kind from the observed upstream and retain metric paths');
 }
