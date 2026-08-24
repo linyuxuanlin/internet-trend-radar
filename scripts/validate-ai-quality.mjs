@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 
 const dashboard = JSON.parse(await readFile(new URL('../public/data/dashboard.json', import.meta.url), 'utf8'));
+const aiEnricher = await readFile(new URL('./enrich-ai-opportunities.mjs', import.meta.url), 'utf8');
 const topics = Array.isArray(dashboard.topics) ? dashboard.topics : [];
 const bad = [];
 let checked = 0;
@@ -28,4 +29,7 @@ const aiAvailable = dashboard.ai?.available === true;
 if (aiAvailable && checked < 1) throw new Error('AI marked available but no verified summaries passed quality validation');
 if (!aiAvailable && checked !== 0) throw new Error(`AI marked unavailable but ${checked} verified summaries are present`);
 if (dashboard.ai?.matchedCount != null && Number(dashboard.ai.matchedCount) !== checked) throw new Error(`AI matchedCount mismatch: ${dashboard.ai.matchedCount} != ${checked}`);
+if (!/topic\.raw_signals/.test(aiEnricher) || !/latest_captured_at/.test(aiEnricher) || !/AI source snapshot is stale or invalid/.test(aiEnricher)) {
+  throw new Error('AI overlay must validate source evidence freshness, not only AI text freshness');
+}
 console.log(`Validated AI quality: available=${aiAvailable}, verified=${checked}, totalTopics=${topics.length}`);
