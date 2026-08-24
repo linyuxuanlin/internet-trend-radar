@@ -322,7 +322,8 @@ async function main() {
       provenance_requirement: 'every persisted raw item must include a valid HTTPS upstream or a registered external-bridge identifier',
       metric_provenance_requirement: 'a non-null heat or engagement value must include its raw.trendRadarMetrics field path; null means unavailable, not zero',
       source_kind_semantics: 'raw_signals.source_kind and peak_evidence.source_kind identify the observed upstream for that evidence',
-      coverage_semantics: 'ready means at least one real topic exists; coverage.active_* reports the actual snapshot source scope'
+      coverage_semantics: 'ready means at least one real topic exists; coverage.active_* reports the actual GitHub Pages snapshot source scope',
+      source_scope: 'GitHub Pages static snapshot: includes sources collected by the static adapters and may contain more sources than the Worker/D1 runtime snapshot; coverage.active_* is authoritative for this artifact'
     },
     topics: merged,
     sources,
