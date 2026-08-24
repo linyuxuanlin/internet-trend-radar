@@ -3,8 +3,27 @@ const EXPECTED_BUILD_SHA = String(process.env.EXPECTED_BUILD_SHA || '').trim().t
 const FETCH_TIMEOUT_MS = Number(process.env.FETCH_TIMEOUT_MS || 15_000);
 const MAX_RELEASE_AGE_MS = Number(process.env.MAX_RELEASE_AGE_MS || 3 * 60 * 60 * 1000);
 const MAX_FUTURE_SKEW_MS = Number(process.env.MAX_FUTURE_SKEW_MS || 5 * 60 * 1000);
+const SOCIAL_IDS = ['weibo', 'zhihu', 'douyin'];
 
 function validSha(value) { return /^[0-9a-f]{40}$/i.test(String(value || '').trim()); }
+
+function validateSocialUpstreams(receipt) {
+  if (!receipt.socialUpstreams || typeof receipt.socialUpstreams !== 'object') throw new Error('release receipt missing socialUpstreams');
+  const fallback = [];
+  for (const id of SOCIAL_IDS) {
+    const row = receipt.socialUpstreams[id];
+    if (!row || typeof row !== 'object') throw new Error(`release receipt missing ${id} upstream provenance`);
+    if (!/^https:\/\//.test(String(row.upstream || ''))) throw new Error(`release receipt ${id} upstream must use HTTPS`);
+    if (!row.provider || row.provider === 'unknown') throw new Error(`release receipt ${id} missing upstream provider`);
+    if (!row.stage || ['unknown', 'failed'].includes(row.stage)) throw new Error(`release receipt ${id} missing upstream stage`);
+    if (row.stage !== 'official-direct') fallback.push(id);
+  }
+  const declaredFallback = Array.isArray(receipt.fallbackSocialSources) ? receipt.fallbackSocialSources : [];
+  if (JSON.stringify([...declaredFallback].sort()) !== JSON.stringify([...fallback].sort())) {
+    throw new Error(`release receipt fallbackSocialSources mismatch: declared=${declaredFallback.join(',')} actual=${fallback.join(',')}`);
+  }
+  return fallback;
+}
 
 export function validateReceipt(receipt, { expectedBuildSha = '', now = Date.now() } = {}) {
   if (!receipt || typeof receipt !== 'object') throw new Error('release receipt must be an object');
@@ -19,12 +38,13 @@ export function validateReceipt(receipt, { expectedBuildSha = '', now = Date.now
   if (!Number.isInteger(receipt.healthySources) || receipt.healthySources < 1) throw new Error(`release receipt has invalid healthySources: ${receipt.healthySources}`);
   if (!Number.isInteger(receipt.directCnSources) || receipt.directCnSources < 1) throw new Error(`release receipt has invalid directCnSources: ${receipt.directCnSources}`);
   if (!['healthy', 'degraded'].includes(receipt.opportunitiesStatus)) throw new Error(`release receipt has invalid opportunitiesStatus: ${receipt.opportunitiesStatus}`);
+  const fallbackSocialSources = validateSocialUpstreams(receipt);
   const expected = String(expectedBuildSha || '').trim().toLowerCase();
   if (expected) {
     if (!validSha(expected)) throw new Error(`expected build SHA is invalid: ${expected}`);
     if (String(receipt.buildSha).toLowerCase() !== expected) throw new Error(`release receipt is not current main: expected=${expected} actual=${receipt.buildSha}`);
   }
-  return { buildSha: String(receipt.buildSha).toLowerCase(), generatedAt: receipt.generatedAt, ageSeconds: Math.max(0, Math.round(ageMs / 1000)), topics: receipt.topics, healthySources: receipt.healthySources, directCnSources: receipt.directCnSources, aiMatched: Number(receipt.aiMatched || 0), opportunitiesStatus: receipt.opportunitiesStatus, opportunities: Number(receipt.opportunities || 0) };
+  return { buildSha: String(receipt.buildSha).toLowerCase(), generatedAt: receipt.generatedAt, ageSeconds: Math.max(0, Math.round(ageMs / 1000)), topics: receipt.topics, healthySources: receipt.healthySources, directCnSources: receipt.directCnSources, socialUpstreams: receipt.socialUpstreams, fallbackSocialSources, socialFallbackActive: fallbackSocialSources.length > 0, aiMatched: Number(receipt.aiMatched || 0), opportunitiesStatus: receipt.opportunitiesStatus, opportunities: Number(receipt.opportunities || 0) };
 }
 
 async function fetchReceipt(rawUrl) {
@@ -40,12 +60,32 @@ async function fetchReceipt(rawUrl) {
 if (process.argv.includes('--self-test')) {
   const buildSha = 'a'.repeat(40);
   const now = Date.parse('2026-08-23T03:00:00Z');
-  const receipt = { buildSha, generatedAt: '2026-08-23T02:30:00Z', preview: false, ready: true, topics: 300, healthySources: 14, directCnSources: 10, aiMatched: 5, opportunitiesStatus: 'degraded', opportunities: 0 };
+  const receipt = {
+    buildSha,
+    generatedAt: '2026-08-23T02:30:00Z',
+    preview: false,
+    ready: true,
+    topics: 300,
+    healthySources: 15,
+    directCnSources: 10,
+    socialUpstreams: {
+      weibo: { provider: 'weibo-official', stage: 'official-direct', upstream: 'https://weibo.com/ajax/side/hotSearch' },
+      zhihu: { provider: 'zhihu-official', stage: 'official-direct', upstream: 'https://www.zhihu.com/api/v3/feed/topstory/hot-lists/total' },
+      douyin: { provider: 'aa1', stage: 'mirror-fallback-1', upstream: 'https://v.api.aa1.cn/api/douyin-hot/index.php?aa1=hot' }
+    },
+    fallbackSocialSources: ['douyin'],
+    aiMatched: 5,
+    opportunitiesStatus: 'degraded',
+    opportunities: 0
+  };
   const result = validateReceipt(receipt, { expectedBuildSha: buildSha, now });
-  if (result.ageSeconds !== 1800 || result.topics !== 300) throw new Error('release receipt self-test failed');
+  if (result.ageSeconds !== 1800 || result.topics !== 300 || result.socialFallbackActive !== true || result.fallbackSocialSources[0] !== 'douyin') throw new Error('release receipt self-test failed');
   let mismatch = false;
   try { validateReceipt(receipt, { expectedBuildSha: 'b'.repeat(40), now }); } catch (error) { mismatch = String(error?.message || error).includes('not current main'); }
   if (!mismatch) throw new Error('release receipt self-test did not reject old build');
+  let provenanceMismatch = false;
+  try { validateReceipt({ ...receipt, fallbackSocialSources: [] }, { now }); } catch (error) { provenanceMismatch = String(error?.message || error).includes('fallbackSocialSources mismatch'); }
+  if (!provenanceMismatch) throw new Error('release receipt self-test did not reject social fallback mismatch');
   console.log('Release receipt self-test passed');
 } else {
   const receipt = await fetchReceipt(RELEASE_URL);
