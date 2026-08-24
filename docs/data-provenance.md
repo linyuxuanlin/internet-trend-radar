@@ -30,7 +30,16 @@
 
 如果一次采集失败，`latest_upstream` 保持为空；不能根据来源名称推断本次拿到的是官方数据。
 
-## 当前实时来源
+## 来源范围：Worker 与 GitHub Pages 不同
+
+项目有两条真实数据路径，不能把它们的来源清单合并理解：
+
+- **Worker/D1 实时路径**：由 `COLLECTOR_SOURCES` 控制，并固定运行 Hacker News、GitHub；小红书由外部 Bridge 推送。只有 D1 中 `sources[].enabled=true` 且通过当前健康门禁的来源进入 Worker 当前评分。`/api/dashboard` 的 `coverage.active_*`、`sources[].enabled` 和 `data_contract.source_scope` 是权威口径。
+- **GitHub Pages 静态路径**：GitHub Actions 中的静态适配器会额外采集少数派、B站、百度、今日头条、虎扑、IT之家、Solidot 等。它是独立的真实快照，不代表这些来源已进入 Worker/D1 当前评分；静态 `dashboard.json` 自身的 `coverage.active_*` 和 `data_contract.source_scope` 是权威口径。
+
+因此，下面的表按“可能出现在真实生产快照中的来源”列出字段定义；查看当前实际使用范围时，必须以对应入口的 `coverage` 和 `sources` 为准。
+
+## 来源字段定义
 
 | 来源 | 当前 upstream / fallback | `heat` | `engagement` | 可比性边界 |
 | --- | --- | --- | --- | --- |
