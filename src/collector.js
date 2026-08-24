@@ -25,7 +25,7 @@ export function kindFromItems(sourceId, items = []) {
   if (upstreams.some(upstream => /api-hot\.imsyy\.top|api\.guole\.fun/i.test(upstream))) return 'aggregator-fallback';
   if (upstreams.some(upstream => /aa1\.cn|luochen\.sbs|fanyia\.cn/i.test(upstream))) return 'mirror-fallback';
   if (sourceId === '36kr' && upstreams.some(upstream => /36kr\.com\/feed(?:-|\/|$)/i.test(upstream))) return 'official-rss';
-  if (sourceId === 'hackernews' || sourceId === 'github' || sourceId === 'weibo' || sourceId === 'zhihu' || sourceId === 'v2ex' || sourceId === 'juejin' || sourceId === '36kr' || sourceId === 'bilibili') return 'official-api';
+  if (sourceId === 'hackernews' || sourceId === 'github' || sourceId === 'weibo' || sourceId === 'zhihu' || sourceId === 'douyin' || sourceId === 'v2ex' || sourceId === 'juejin' || sourceId === '36kr' || sourceId === 'bilibili') return 'official-api';
   return 'source-api';
 }
 
