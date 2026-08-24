@@ -57,7 +57,12 @@ export function validateRawProvenance(items, label = 'raw_items') {
     if (!upstream) {
       throw new Error(`${label}: raw.trendRadarUpstream is required before persistence (item index ${index})`);
     }
-    if (upstream.startsWith('xiaohongshu-mcp:')) continue;
+    if (upstream.startsWith('xiaohongshu-mcp:')) {
+      if (item?.sourceId !== 'xiaohongshu') {
+        throw new Error(`${label}: external bridge provenance is only valid for source xiaohongshu (item index ${index})`);
+      }
+      continue;
+    }
     let parsed;
     try {
       parsed = new URL(upstream);
@@ -366,6 +371,9 @@ export async function collectAll(env) {
 export async function ingestExternal(env, sourceId, items) {
   if (!SOURCE_METRICS[sourceId]) {
     throw new Error(`external ingest source ${sourceId || '<empty>'} has no registered metric contract`);
+  }
+  if (sourceId !== 'xiaohongshu') {
+    throw new Error(`external ingest source ${sourceId} is not an approved external bridge`);
   }
   if (!Array.isArray(items)) throw new Error('items must be an array');
   await env.DB.prepare(`INSERT OR IGNORE INTO sources(id,name,region,kind) VALUES(?,?,?,?)`)
