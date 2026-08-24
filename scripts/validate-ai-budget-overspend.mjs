@@ -17,34 +17,55 @@ export function validateOverspend(payload) {
   }
 
   const overspendCount = Math.max(0, attemptsToday - dailyBudget);
-  const budgetOverspent = overspendCount > 0;
-  if (budgetOverspent) {
-    throw new Error(`AI daily budget overspent by ${overspendCount} calls: attempts_today=${attemptsToday}, daily_budget=${dailyBudget}`);
-  }
-
   return {
-    budget_overspent: false,
-    overspend_count: 0,
+    budget_overspent: overspendCount > 0,
+    overspend_count: overspendCount,
     attempts_today: attemptsToday,
     daily_budget: dailyBudget,
     remaining_daily: Math.max(0, dailyBudget - attemptsToday)
   };
 }
 
+export function assertNoAttemptGrowth(before, after) {
+  if (before.daily_budget !== after.daily_budget) {
+    throw new Error(`daily budget changed during read-only probe: ${before.daily_budget} -> ${after.daily_budget}`);
+  }
+  if (after.attempts_today !== before.attempts_today) {
+    throw new Error(`dashboard GET mutated AI attempts: ${before.attempts_today} -> ${after.attempts_today}`);
+  }
+  return {
+    attempts_before: before.attempts_today,
+    attempts_after: after.attempts_today,
+    budget_overspent: after.budget_overspent,
+    overspend_count: after.overspend_count
+  };
+}
+
 function runSelfTest() {
-  const valid = validateOverspend({ ok: true, preview: false, daily_budget: 24, attempts_today: 17 });
-  if (valid.budget_overspent !== false || valid.overspend_count !== 0 || valid.remaining_daily !== 7) {
-    throw new Error('valid budget self-test produced incorrect derived state');
+  const normal = validateOverspend({ ok: true, preview: false, daily_budget: 24, attempts_today: 17 });
+  if (normal.budget_overspent !== false || normal.overspend_count !== 0 || normal.remaining_daily !== 7) {
+    throw new Error('normal budget self-test produced incorrect derived state');
   }
 
-  const cases = [
-    [{ ok: true, preview: false, daily_budget: 24, attempts_today: 25 }, 'overspent by 1 calls'],
-    [{ ok: true, preview: false, daily_budget: 24, attempts_today: 80 }, 'overspent by 56 calls'],
+  const overspent = validateOverspend({ ok: true, preview: false, daily_budget: 24, attempts_today: 80 });
+  if (overspent.budget_overspent !== true || overspent.overspend_count !== 56 || overspent.remaining_daily !== 0) {
+    throw new Error('overspent budget self-test produced incorrect derived state');
+  }
+  assertNoAttemptGrowth(overspent, { ...overspent });
+
+  let mutationRejected = false;
+  try {
+    assertNoAttemptGrowth(overspent, { ...overspent, attempts_today: 81, overspend_count: 57 });
+  } catch (error) {
+    mutationRejected = String(error?.message || error).includes('dashboard GET mutated AI attempts');
+  }
+  if (!mutationRejected) throw new Error('attempt-growth mutation self-test was not rejected');
+
+  const invalidCases = [
     [{ ok: true, preview: true, daily_budget: 24, attempts_today: 1 }, 'preview data'],
     [{ ok: true, preview: false, daily_budget: 96, attempts_today: 1 }, 'daily_budget drifted']
   ];
-
-  for (const [payload, expected] of cases) {
+  for (const [payload, expected] of invalidCases) {
     let message = '';
     try {
       validateOverspend(payload);
@@ -54,25 +75,47 @@ function runSelfTest() {
     if (!message.includes(expected)) throw new Error(`expected rejection containing "${expected}", got "${message}"`);
   }
 
-  console.log('AI budget overspend guard self-test passed');
+  console.log('AI budget overspend and dashboard read-only guard self-test passed');
 }
 
-async function probe(baseUrl) {
-  const target = new URL('/api/ai-budget', new URL(baseUrl).origin);
+async function fetchJson(url, label) {
+  const target = new URL(url);
   target.searchParams.set('_overspend_watchdog', `${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const response = await fetch(target, {
     headers: {
       accept: 'application/json',
       'cache-control': 'no-cache, no-store',
       pragma: 'no-cache',
-      'user-agent': 'internet-trend-radar-ai-overspend-watchdog/1.0'
+      'user-agent': 'internet-trend-radar-ai-overspend-watchdog/1.1'
     },
     signal: AbortSignal.timeout(15_000)
   });
-  if (!response.ok) throw new Error(`AI budget probe HTTP ${response.status}`);
-  const payload = await response.json();
-  const result = validateOverspend(payload);
-  console.log(JSON.stringify({ ok: true, origin: target.origin, ...result, generatedAt: payload.generatedAt || null }, null, 2));
+  if (!response.ok) throw new Error(`${label} probe HTTP ${response.status}`);
+  return response.json();
+}
+
+async function readBudget(origin) {
+  return validateOverspend(await fetchJson(`${origin}/api/ai-budget`, 'AI budget'));
+}
+
+async function probe(baseUrl) {
+  const origin = new URL(baseUrl).origin;
+  const before = await readBudget(origin);
+
+  const dashboards = await Promise.all(Array.from({ length: 3 }, () => fetchJson(`${origin}/api/dashboard`, 'dashboard')));
+  for (const payload of dashboards) {
+    if (payload?.preview !== false || payload?.ready !== true) throw new Error('dashboard read-only probe did not return ready real data');
+    if (!Array.isArray(payload?.topics) || payload.topics.length < 1) throw new Error('dashboard read-only probe returned no real topics');
+  }
+
+  await new Promise(resolve => setTimeout(resolve, 1500));
+  const after = await readBudget(origin);
+  const readOnly = assertNoAttemptGrowth(before, after);
+  const result = { ok: true, origin, ...after, read_only_probe: readOnly, dashboard_reads: dashboards.length };
+  if (after.budget_overspent) {
+    console.log(`::warning::Historical AI budget overspend remains: ${after.overspend_count} calls over ${after.daily_budget}/day; dashboard reads did not increase it`);
+  }
+  console.log(JSON.stringify(result, null, 2));
 }
 
 const args = process.argv.slice(2);
