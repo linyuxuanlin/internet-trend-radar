@@ -8,7 +8,7 @@ const DEFAULT_REAL_DASHBOARD_FALLBACK = 'https://linyuxuanlin.github.io/internet
 const DEFAULT_AI_REFRESH_HOURS = 6;
 const DATA_CONTRACT = {
   raw_fields: ['rank', 'heat', 'engagement', 'captured_at', 'raw_json.trendRadarUpstream', 'raw_json.trendRadarMetrics', 'observed_upstreams', 'peak_evidence'],
-  raw_field_semantics: 'heat and engagement are source-native values; null means the source did not provide that metric',
+  raw_field_semantics: 'heat and engagement are source-native values; null means the source did not provide that metric; peak_evidence also retains the selected metric path',
   derived_fields: ['trend_score', 'current_score', 'breakout_score'],
   derived_score_method: 'within-source current-window rank_score*0.72 + within-source current-24h heat_percentile*24 + engagement_percentile*18; then source_weight*0.82, cross-source coverage bonus (log2(source_count)*10, max 25), persistence bonus (log2(mentions)*3, max 12), clamped to 0-100; raw platform counters are never compared across sources',
   breakout_score_method: '42 + score_delta*2.4 + new_source_delta*13 + log2(mention_delta+1)*7 + novelty*0.65, clamped to 0-100',
@@ -50,12 +50,13 @@ async function loadRawSignals(env, topics) {
     ), heat_peaks AS (
       SELECT fingerprint, source_id, captured_at AS peak_captured_at,
              json_extract(raw_json, '$.trendRadarUpstream') AS peak_upstream,
+             json_extract(raw_json, '$.trendRadarMetrics.heat_path') AS peak_metric_path,
              CASE
                WHEN source_id='xiaohongshu' OR json_extract(raw_json,'$.trendRadarUpstream') LIKE 'xiaohongshu-mcp:%' THEN 'external-bridge'
                WHEN json_extract(raw_json,'$.trendRadarUpstream') LIKE '%api-hot.imsyy.top%' OR json_extract(raw_json,'$.trendRadarUpstream') LIKE '%api.guole.fun%' THEN 'aggregator-fallback'
                WHEN json_extract(raw_json,'$.trendRadarUpstream') LIKE '%aa1.cn%' OR json_extract(raw_json,'$.trendRadarUpstream') LIKE '%luochen.sbs%' OR json_extract(raw_json,'$.trendRadarUpstream') LIKE '%fanyia.cn%' THEN 'mirror-fallback'
                WHEN source_id='36kr' AND json_extract(raw_json,'$.trendRadarUpstream') LIKE 'https://www.36kr.com/feed%' THEN 'official-rss'
-               WHEN source_id IN ('hackernews','github','weibo','zhihu','v2ex','juejin','36kr','bilibili') THEN 'official-api'
+               WHEN source_id IN ('hackernews','github','weibo','zhihu','douyin','v2ex','juejin','36kr','bilibili') THEN 'official-api'
                ELSE 'source-api'
              END AS peak_kind
         FROM (
@@ -68,12 +69,13 @@ async function loadRawSignals(env, topics) {
     ), engagement_peaks AS (
       SELECT fingerprint, source_id, captured_at AS peak_captured_at,
              json_extract(raw_json, '$.trendRadarUpstream') AS peak_upstream,
+             json_extract(raw_json, '$.trendRadarMetrics.engagement_path') AS peak_metric_path,
              CASE
                WHEN source_id='xiaohongshu' OR json_extract(raw_json,'$.trendRadarUpstream') LIKE 'xiaohongshu-mcp:%' THEN 'external-bridge'
                WHEN json_extract(raw_json,'$.trendRadarUpstream') LIKE '%api-hot.imsyy.top%' OR json_extract(raw_json,'$.trendRadarUpstream') LIKE '%api.guole.fun%' THEN 'aggregator-fallback'
                WHEN json_extract(raw_json,'$.trendRadarUpstream') LIKE '%aa1.cn%' OR json_extract(raw_json,'$.trendRadarUpstream') LIKE '%luochen.sbs%' OR json_extract(raw_json,'$.trendRadarUpstream') LIKE '%fanyia.cn%' THEN 'mirror-fallback'
                WHEN source_id='36kr' AND json_extract(raw_json,'$.trendRadarUpstream') LIKE 'https://www.36kr.com/feed%' THEN 'official-rss'
-               WHEN source_id IN ('hackernews','github','weibo','zhihu','v2ex','juejin','36kr','bilibili') THEN 'official-api'
+               WHEN source_id IN ('hackernews','github','weibo','zhihu','douyin','v2ex','juejin','36kr','bilibili') THEN 'official-api'
                ELSE 'source-api'
              END AS peak_kind
         FROM (
@@ -92,7 +94,7 @@ async function loadRawSignals(env, topics) {
              WHEN json_extract(r.raw_json,'$.trendRadarUpstream') LIKE '%api-hot.imsyy.top%' OR json_extract(r.raw_json,'$.trendRadarUpstream') LIKE '%api.guole.fun%' THEN 'aggregator-fallback'
              WHEN json_extract(r.raw_json,'$.trendRadarUpstream') LIKE '%aa1.cn%' OR json_extract(r.raw_json,'$.trendRadarUpstream') LIKE '%luochen.sbs%' OR json_extract(r.raw_json,'$.trendRadarUpstream') LIKE '%fanyia.cn%' THEN 'mirror-fallback'
              WHEN r.source_id='36kr' AND json_extract(r.raw_json,'$.trendRadarUpstream') LIKE 'https://www.36kr.com/feed%' THEN 'official-rss'
-             WHEN r.source_id IN ('hackernews','github','weibo','zhihu','v2ex','juejin','36kr','bilibili') THEN 'official-api'
+             WHEN r.source_id IN ('hackernews','github','weibo','zhihu','douyin','v2ex','juejin','36kr','bilibili') THEN 'official-api'
              ELSE 'source-api' END END) AS source_kind,
            COALESCE(s.weight, 1) AS source_weight,
            s.metadata_json,
@@ -106,9 +108,11 @@ async function loadRawSignals(env, topics) {
            latest.latest_captured_at,
            heat_peaks.peak_captured_at AS heat_peak_captured_at,
            heat_peaks.peak_upstream AS heat_peak_upstream,
+           heat_peaks.peak_metric_path AS heat_peak_metric_path,
            heat_peaks.peak_kind AS heat_peak_kind,
            engagement_peaks.peak_captured_at AS engagement_peak_captured_at,
            engagement_peaks.peak_upstream AS engagement_peak_upstream,
+           engagement_peaks.peak_metric_path AS engagement_peak_metric_path,
            engagement_peaks.peak_kind AS engagement_peak_kind,
            MAX(CASE WHEN r.captured_at = latest.latest_captured_at
                     THEN COALESCE(json_extract(r.raw_json, '$.trendRadarUpstream'), '') END) AS upstream,
@@ -125,8 +129,8 @@ async function loadRawSignals(env, topics) {
       LEFT JOIN engagement_peaks ON engagement_peaks.fingerprint = r.fingerprint
                                 AND engagement_peaks.source_id = r.source_id
      GROUP BY r.fingerprint, r.source_id, s.name, s.weight, s.metadata_json, latest.latest_captured_at,
-              heat_peaks.peak_captured_at, heat_peaks.peak_upstream, heat_peaks.peak_kind,
-              engagement_peaks.peak_captured_at, engagement_peaks.peak_upstream, engagement_peaks.peak_kind
+              heat_peaks.peak_captured_at, heat_peaks.peak_upstream, heat_peaks.peak_metric_path, heat_peaks.peak_kind,
+              engagement_peaks.peak_captured_at, engagement_peaks.peak_upstream, engagement_peaks.peak_metric_path, engagement_peaks.peak_kind
   `).bind(...ids).all();
   const byTopic = new Map();
   for (const row of results) {
@@ -149,18 +153,20 @@ async function loadRawSignals(env, topics) {
         heat: row.heat_peak_captured_at || row.heat_peak_upstream ? {
           captured_at: row.heat_peak_captured_at || null,
           upstream: row.heat_peak_upstream || null,
+          metric_path: row.heat_peak_metric_path || null,
           source_kind: row.heat_peak_kind || null
         } : null,
         engagement: row.engagement_peak_captured_at || row.engagement_peak_upstream ? {
           captured_at: row.engagement_peak_captured_at || null,
           upstream: row.engagement_peak_upstream || null,
+          metric_path: row.engagement_peak_metric_path || null,
           source_kind: row.engagement_peak_kind || null
         } : null
       },
       upstream: row.upstream || null,
       metric_paths: {
-        heat: row.heat_metric_path || null,
-        engagement: row.engagement_metric_path || null
+        heat: row.heat_peak_metric_path || row.heat_metric_path || null,
+        engagement: row.engagement_peak_metric_path || row.engagement_metric_path || null
       },
       units: 'source-native; not comparable across platforms'
     });
