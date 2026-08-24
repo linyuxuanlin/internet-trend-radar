@@ -1,4 +1,4 @@
-import { analyzeTopicDetailed, enrichTopTopics, isStoredAIValid } from '../src/ai.js';
+import { analyzeTopicDetailed, enrichTopTopics, isStoredAIValid, validateAIEvidenceClaims } from '../src/ai.js';
 import { routeApi } from '../src/api.js';
 
 function assert(condition, message) {
@@ -17,6 +17,9 @@ const goodPayload = { summary: goodSummary, why_now: goodWhy, opportunities: goo
 
 assert(isStoredAIValid({ ai_summary: goodSummary, ai_why_now: goodWhy, ai_opportunities_json: JSON.stringify(goodOpp) }), 'valid stored AI should pass');
 assert(!isStoredAIValid({ ai_summary: '当前热度较高，值得关注后续发展。', ai_why_now: goodWhy, ai_opportunities_json: JSON.stringify(goodOpp) }), 'low-value summary must fail public quality gate');
+const evidenceFixture = [{ source_id: '36kr', title: '真实热点', raw_heat: 39031, raw_engagement: 237, captured_at: '2026-08-24T22:21:03.783Z', upstream: 'https://gateway.36kr.com/api/mis/nav/home/nav/rank/hot' }];
+assert(String(validateAIEvidenceClaims({ summary: '真实热点出现新的变化和讨论。', why_now: '根据来源，热度达到 38715，当前需要继续核验。', opportunities: goodOpp }, { canonical_title: '真实热点' }, evidenceFixture)).startsWith('unsupported-evidence-number:'), 'unsupported AI numbers must fail evidence validation');
+assert(validateAIEvidenceClaims({ summary: '真实热点出现新的变化和讨论。', why_now: '根据来源，当前证据需要继续核验。', opportunities: [{ type: '内容|工具', idea: '做一个验证工具', rationale: '先核验需求再投入' }] }, { canonical_title: '真实热点' }, evidenceFixture) === 'invalid-opportunity-type', 'unselected opportunity type enum must fail evidence validation');
 
 {
   const topic = { canonical_title: '某品牌发布新手机', category: '科技', current_score: 88, breakout_score: 80, source_count: 1 };
