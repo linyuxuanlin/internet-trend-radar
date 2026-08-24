@@ -14,7 +14,8 @@ const DATA_CONTRACT = {
   provenance_requirement: 'every persisted raw item must include a valid HTTPS upstream or a registered external-bridge identifier',
   metric_provenance_requirement: 'a non-null heat or engagement value must include its raw.trendRadarMetrics field path; null means unavailable, not zero',
   source_kind_semantics: 'raw_signals.source_kind and peak_evidence.source_kind are derived from the observed upstream for that evidence, not copied from the current source status',
-  coverage_semantics: 'ready means at least one real topic exists; coverage.active_* reports the actual enabled source scope'
+  coverage_semantics: 'ready means at least one real topic exists; coverage.active_* reports the actual enabled Worker/D1 source scope',
+  source_scope: 'Worker/D1 runtime snapshot: only sources enabled by COLLECTOR_SOURCES plus Hacker News, GitHub, and the xiaohongshu external Bridge are included in current scoring; static-only Pages adapters are not included'
 };
 
 function notReady(error, extra = {}) {
