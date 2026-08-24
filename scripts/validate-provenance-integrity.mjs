@@ -20,7 +20,7 @@ try {
 
 if (!insecureRejected) throw new Error('non-HTTPS raw provenance was not rejected before persistence');
 
-validateRawProvenance([{ raw: { trendRadarUpstream: 'xiaohongshu-mcp:/api/v1/feeds/search' } }], 'bridge-fixture');
+validateRawProvenance([{ sourceId: 'xiaohongshu', raw: { trendRadarUpstream: 'xiaohongshu-mcp:/api/v1/feeds/search' } }], 'bridge-fixture');
 
 validateMetricProvenance([{
   heat: 0,
@@ -70,4 +70,12 @@ try {
   unregisteredExternalRejected = String(error?.message || error).includes('has no registered metric contract');
 }
 if (!unregisteredExternalRejected) throw new Error('external ingest accepted an unregistered source contract');
+
+let officialBridgeRejected = false;
+try {
+  await ingestExternal({}, 'weibo', []);
+} catch (error) {
+  officialBridgeRejected = String(error?.message || error).includes('not an approved external bridge');
+}
+if (!officialBridgeRejected) throw new Error('external ingest allowed a bridge to impersonate an official source');
 console.log('Raw provenance integrity validated: upstream and non-null metric values require explicit provenance');
