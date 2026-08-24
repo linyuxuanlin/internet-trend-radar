@@ -21,7 +21,10 @@ on:
       - '.github/workflows/ai-budget-watchdog.yml'
       - 'wrangler.jsonc'
   schedule:
-    - cron: '52 * * * *'
+    # Run shortly after the 75-minute post-midnight recovery grace expires.
+    # With the old :52 schedule, a silent reset stall could escape detection
+    # until 01:52 UTC; :19 catches it at 01:19 UTC without adding workflow runs.
+    - cron: '19 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -35,6 +38,8 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      AI_RESET_RECOVERY_GRACE_MINUTES: '75'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

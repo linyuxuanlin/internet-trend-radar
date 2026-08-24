@@ -20,10 +20,12 @@ export function mergeAIAvailabilityIntoDebug(debug, availability) {
   payload.ai.pacing = availability.pacing;
   payload.ai.available = Boolean(availability.available);
 
-  if (availability.effective_blocker) {
-    payload.ai.blocked_reason = availability.effective_blocker;
-    payload.ai.ready_for_inference = false;
-  }
+  // Availability is the single source of truth for whether inference can run.
+  // Base diagnostics may still report informational coverage states such as
+  // `partial-ai-coverage`; those must not survive as a blocker after provider
+  // quota recovers or pacing becomes available again.
+  payload.ai.blocked_reason = availability.effective_blocker || null;
+  payload.ai.ready_for_inference = Boolean(availability.available);
 
   return payload;
 }
