@@ -3,7 +3,7 @@
 export const SOURCE_METRICS = {
   weibo: { heat: 'adapter item.hot <- data.realtime[].num', engagement: null, note: 'official hot-search count' },
   zhihu: { heat: 'adapter item.hot <- data[].detail_text (parsed)', engagement: null, note: 'official displayed heat text' },
-  douyin: { heat: 'word_list[].hot_value|hot|score (official or fallback)', engagement: null, note: 'source-native hot-list value' },
+  douyin: { heat: 'word_list[].hot_value|word_list[].hot|word_list[].score|data.list[].hotness|data.list[].hot_value|data.list[].hot|data.list[].score|data[].hot|data[].hotness|data[].hot_value|data[].score', heat_paths: ['word_list[].hot_value', 'word_list[].hot', 'word_list[].score', 'data.list[].hotness', 'data.list[].hot_value', 'data.list[].hot', 'data.list[].score', 'data[].hot', 'data[].hotness', 'data[].hot_value', 'data[].score'], engagement: null, note: 'source-native hot-list value; exact selected field is retained per item' },
   sspai: { heat: null, engagement: null, note: 'official RSS feed; publication feed does not expose a native heat or engagement counter' },
   bilibili: { heat: 'data.list[].stat.view', engagement: 'stat.like+reply+coin+favorite+share+danmaku', note: 'official video statistics' },
   v2ex: { heat: null, engagement: 'topics[].replies', note: 'official hot-topics API; replies are interaction count, not heat' },
