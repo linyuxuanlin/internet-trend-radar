@@ -86,6 +86,10 @@ try {
   process.exit();
 }
 
+const sourceScope = String(dashboard?.data_contract?.source_scope || '').trim();
+if (!sourceScope) fail('data_contract.source_scope is required so the artifact declares its actual source scope');
+if (sourceScope.length < 40) fail('data_contract.source_scope is too vague to establish the artifact source scope');
+
 const topics = Array.isArray(dashboard.topics) ? dashboard.topics : [];
 const sources = Array.isArray(dashboard.sources) ? dashboard.sources : [];
 const healthy = sources.filter(source => source?.last_success_at && Number(source?.last_item_count || 0) > 0);
