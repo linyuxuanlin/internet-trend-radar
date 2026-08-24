@@ -364,6 +364,9 @@ export async function collectAll(env) {
 }
 
 export async function ingestExternal(env, sourceId, items) {
+  if (!SOURCE_METRICS[sourceId]) {
+    throw new Error(`external ingest source ${sourceId || '<empty>'} has no registered metric contract`);
+  }
   if (!Array.isArray(items)) throw new Error('items must be an array');
   await env.DB.prepare(`INSERT OR IGNORE INTO sources(id,name,region,kind) VALUES(?,?,?,?)`)
     .bind(sourceId, sourceId, 'unknown', 'external-bridge').run();
