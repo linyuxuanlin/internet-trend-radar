@@ -81,7 +81,7 @@ try {
   }
   for (const source of ['baidu', 'toutiao', 'hupu']) {
     const fallback = metricMetadata(source);
-    const official = metricMetadata(source, 'official-page');
+    const official = metricMetadata(source, source === 'toutiao' ? 'official-api' : 'official-page');
     const fallbackFields = fallback.heat.split('(')[0];
     if (/(^|[| ])(?:score|view|rank|index)(?:[| ]|$)/.test(fallbackFields)) {
       throw new Error(`${source} fallback metadata must exclude rank/score/view/index fields`);
