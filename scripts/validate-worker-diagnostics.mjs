@@ -1,4 +1,5 @@
 import worker from '../src/index.js';
+import { opportunitiesSnapshot } from '../src/api.js';
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -39,6 +40,24 @@ assert(missingTables.body.schema.tables.raw_items === false, 'missing table shou
 
 const health = await parse(await worker.fetch(new Request('https://example.test/api/health'), {}));
 assert(health.status === 200 && health.body.ok === true, 'health must remain reachable without D1');
+
+const opportunitiesWithoutD1 = await parse(await opportunitiesSnapshot(
+  { BUILD_SHA: 'a'.repeat(40) },
+  new Request('https://example.test/data/opportunities.json')
+));
+assert(opportunitiesWithoutD1.status === 503, 'opportunities without D1 must remain degraded');
+assert(opportunitiesWithoutD1.body.buildSha === 'a'.repeat(40), 'opportunities must preserve explicit deployment build SHA without static assets');
+
+const originalDefaultFallbackFetch = globalThis.fetch;
+let defaultFallbackUrl = null;
+globalThis.fetch = async request => {
+  defaultFallbackUrl = typeof request === 'string' ? request : request.url;
+  return new Response(JSON.stringify({ ready: false, preview: false, topics: [], sources: [] }), { status: 503 });
+};
+const fallbackWithoutD1 = await parse(await worker.fetch(new Request('https://example.test/api/dashboard'), {}));
+globalThis.fetch = originalDefaultFallbackFetch;
+assert(fallbackWithoutD1.status === 503, 'dashboard without D1 must fail closed when no fallback is available');
+assert(defaultFallbackUrl === 'https://linyuxuanlin.github.io/internet-trend-radar/data/dashboard.json', `default dashboard fallback URL drifted: ${defaultFallbackUrl}`);
 
 const aiDebugDB = {
   async exec() { return { count: 1 }; },

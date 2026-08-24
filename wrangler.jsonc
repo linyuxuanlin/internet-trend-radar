@@ -36,6 +36,7 @@
     "AI_DAILY_MODEL_CALL_BUDGET": "240",
     "AI_RETRY_MINUTES": "30",
     "AI_REFRESH_HOURS": "6",
+    "BUILD_SHA": "10d38548284b52f3410e16382185ed2bbea84136",
     "SITE_NAME": "Trend Radar",
     "PUBLIC_BASE_URL": "https://radar.wiki-power.com",
     "COLLECTOR_SOURCES": "weibo,zhihu,36kr,douyin,v2ex,juejin"

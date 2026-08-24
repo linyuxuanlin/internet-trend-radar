@@ -4,7 +4,7 @@ import { isStoredAIValid, isStoredAIUsable } from './ai.js';
 import { currentSourcePredicate, SOURCE_FRESHNESS_HOURS } from './source-health.js';
 import { officialMetricUpstreamPredicate } from './source-metadata.js';
 
-const DEFAULT_REAL_DASHBOARD_FALLBACK = 'https://radar.wiki-power.com/data/dashboard.json';
+const DEFAULT_REAL_DASHBOARD_FALLBACK = 'https://linyuxuanlin.github.io/internet-trend-radar/data/dashboard.json';
 const DEFAULT_AI_REFRESH_HOURS = 6;
 const DATA_CONTRACT = {
   raw_fields: ['rank', 'heat', 'engagement', 'captured_at', 'raw_json.trendRadarUpstream', 'raw_json.trendRadarMetrics', 'observed_upstreams', 'peak_evidence'],
