@@ -180,9 +180,9 @@ function normalizeAnalysis(parsed, model, topicTitle) {
       })).filter(o => o.idea && o.rationale)
     : [];
   if (!summary || !whyNow || opportunities.length < 1) return { analysis: null, failureReason: 'incomplete-output' };
+  if (isTitleEcho(summary, topicTitle)) return { analysis: null, failureReason: 'title-echo' };
   if (summary.length < 20 || whyNow.length < 20) return { analysis: null, failureReason: 'too-short' };
   if (hasLowValuePhrase(summary) || hasLowValuePhrase(whyNow)) return { analysis: null, failureReason: 'low-value-language' };
-  if (isTitleEcho(summary, topicTitle)) return { analysis: null, failureReason: 'title-echo' };
   return { analysis: { summary, why_now: whyNow, opportunities, risks }, failureReason: null };
 }
 
