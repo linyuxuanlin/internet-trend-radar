@@ -52,4 +52,7 @@ if (!/heat_peak_captured_at/.test(api) || !/heat_peak_upstream/.test(api) || !/e
 if (!/definition_heat_path_violations/.test(index) || !/definition_engagement_path_violations/.test(index) || !/definition_heat_path_violations/.test(api)) {
   throw new Error('runtime data quality must validate exact source metric paths, not only path presence');
 }
+if (!/json_each\(s\.metadata_json,'\$\.heat_paths'\)/.test(index) || !/json_each\(s\.metadata_json,'\$\.heat_paths'\)/.test(api)) {
+  throw new Error('runtime data quality must accept only declared alternative heat paths');
+}
 console.log('Data-quality null semantics validated: zero is observed, NULL is missing');
