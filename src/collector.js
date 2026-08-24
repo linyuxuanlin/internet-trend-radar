@@ -8,7 +8,6 @@ import { SOURCE_METRICS, metricMetadata, officialMetricUpstreamPredicate } from 
 const EXACT_METRIC_PATHS = {
   weibo: { heat: 'adapter item.hot <- data.realtime[].num' },
   zhihu: { heat: 'adapter item.hot <- data[].detail_text (parsed)' },
-  douyin: { heat: 'word_list[].hot_value|hot|score (official or fallback)' },
   bilibili: { heat: 'data.list[].stat.view', engagement: 'stat.like+reply+coin+favorite+share+danmaku' },
   v2ex: { heat: null, engagement: 'topics[].replies' },
   juejin: { heat: 'article_info.view_count', engagement: 'digg_count+comment_count+collect_count+share_count' },
@@ -176,13 +175,23 @@ async function repairHistoricalMetricProvenance(env) {
                OR length(trim(json_extract(raw_json,'$.trendRadarMetrics.heat_path'))) = 0)
         `).bind(exact.heat, sourceId));
       }
-      unprovableMetricCleanups.push(env.DB.prepare(`
-        UPDATE raw_items
-           SET heat=NULL
-         WHERE source_id=? AND heat IS NOT NULL
-           AND (json_extract(raw_json,'$.trendRadarMetrics.heat_path') IS NULL
-             OR length(trim(json_extract(raw_json,'$.trendRadarMetrics.heat_path'))) = 0)
-      `).bind(sourceId));
+      const allowedHeatPaths = Array.isArray(definition.heat_paths) ? definition.heat_paths : (exact.heat ? [exact.heat] : []);
+      if (allowedHeatPaths.length) {
+        unprovableMetricCleanups.push(env.DB.prepare(`
+          UPDATE raw_items
+             SET heat=NULL,
+                 raw_json=CASE WHEN json_valid(raw_json)=1 THEN json_remove(raw_json,'$.trendRadarMetrics.heat_path') ELSE raw_json END
+           WHERE source_id=? AND heat IS NOT NULL
+             AND (
+               json_extract(raw_json,'$.trendRadarMetrics.heat_path') IS NULL
+               OR length(trim(json_extract(raw_json,'$.trendRadarMetrics.heat_path'))) = 0
+               OR NOT EXISTS (
+                 SELECT 1 FROM json_each(?) allowed
+                  WHERE allowed.value = json_extract(raw_json,'$.trendRadarMetrics.heat_path')
+               )
+             )
+        `).bind(sourceId, JSON.stringify(allowedHeatPaths)));
+      }
     }
     if (definition.engagement) {
       if (exact.engagement) {
@@ -195,13 +204,23 @@ async function repairHistoricalMetricProvenance(env) {
                OR length(trim(json_extract(raw_json,'$.trendRadarMetrics.engagement_path'))) = 0)
         `).bind(exact.engagement, sourceId));
       }
-      unprovableMetricCleanups.push(env.DB.prepare(`
-        UPDATE raw_items
-           SET engagement=NULL
-         WHERE source_id=? AND engagement IS NOT NULL
-           AND (json_extract(raw_json,'$.trendRadarMetrics.engagement_path') IS NULL
-             OR length(trim(json_extract(raw_json,'$.trendRadarMetrics.engagement_path'))) = 0)
-      `).bind(sourceId));
+      const allowedEngagementPaths = Array.isArray(definition.engagement_paths) ? definition.engagement_paths : (exact.engagement ? [exact.engagement] : []);
+      if (allowedEngagementPaths.length) {
+        unprovableMetricCleanups.push(env.DB.prepare(`
+          UPDATE raw_items
+             SET engagement=NULL,
+                 raw_json=CASE WHEN json_valid(raw_json)=1 THEN json_remove(raw_json,'$.trendRadarMetrics.engagement_path') ELSE raw_json END
+           WHERE source_id=? AND engagement IS NOT NULL
+             AND (
+               json_extract(raw_json,'$.trendRadarMetrics.engagement_path') IS NULL
+               OR length(trim(json_extract(raw_json,'$.trendRadarMetrics.engagement_path'))) = 0
+               OR NOT EXISTS (
+                 SELECT 1 FROM json_each(?) allowed
+                  WHERE allowed.value = json_extract(raw_json,'$.trendRadarMetrics.engagement_path')
+               )
+             )
+        `).bind(sourceId, JSON.stringify(allowedEngagementPaths)));
+      }
     }
   }
   for (const group of chunks(repairs, 80)) await env.DB.batch(group);
