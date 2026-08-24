@@ -175,8 +175,9 @@ async function loadRawSignals(env, topics) {
 }
 
 function publicTopic(topic, rawSignals = [], aiRefreshHours = DEFAULT_AI_REFRESH_HOURS) {
-  const qualityValid = isStoredAIValid(topic);
-  const aiUsable = isStoredAIUsable(topic, aiRefreshHours);
+  const aiTopic = { ...topic, raw_signals: rawSignals };
+  const qualityValid = isStoredAIValid(aiTopic);
+  const aiUsable = isStoredAIUsable(aiTopic, aiRefreshHours);
   const publicData = aiUsable ? { ...topic, opportunities: safeJsonParse(topic.ai_opportunities_json, []) || [] } : {
     ...topic,
     ai_summary: null,
