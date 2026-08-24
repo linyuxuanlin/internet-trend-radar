@@ -137,8 +137,14 @@ function mergeTopics(existing, incoming) {
       byId.set(topic.id, topic);
       continue;
     }
-    const sourceIds = new Set((old.sources || []).map(s => s.source_id));
-    old.sources = [...(old.sources || []), ...(topic.sources || []).filter(s => !sourceIds.has(s.source_id))];
+    const signalBySource = new Map([...(old.raw_signals || []), ...(topic.raw_signals || [])]
+      .filter(signal => signal?.source_id)
+      .map(signal => [signal.source_id, signal]));
+    old.raw_signals = [...signalBySource.values()];
+    const sourceById = new Map([...(old.sources || []), ...(topic.sources || [])]
+      .filter(source => source?.source_id)
+      .map(source => [`${source.source_id}:${source.external_id || source.url || source.title || ''}`, source]));
+    old.sources = [...sourceById.values()];
     old.source_count = new Set(old.sources.map(s => s.source_id)).size;
     old.mention_count = Math.max(Number(old.mention_count || 0), old.sources.length);
     old.current_score = Math.max(Number(old.current_score || 0), Number(topic.current_score || 0));
