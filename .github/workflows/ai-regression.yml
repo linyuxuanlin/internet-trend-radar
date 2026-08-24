@@ -15,6 +15,7 @@ jobs:
           node scripts/validate-ai-quota-circuit.mjs
           node scripts/check-live-ai-output-quality.mjs --self-test
           node scripts/check-ai-quality-rollout-window.mjs --self-test
+          node scripts/validate-ai-quality-rollout-endpoint.mjs
 
           cat > /tmp/ai-debug-good.json <<'JSON'
           {
