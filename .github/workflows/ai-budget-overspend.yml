@@ -1,0 +1,32 @@
+name: AI Budget Overspend
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/validate-ai-budget-overspend.mjs'
+      - '.github/workflows/ai-budget-overspend.yml'
+      - 'src/**'
+      - 'wrangler.toml'
+  push:
+    branches: [main]
+  schedule:
+    - cron: '27 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Deterministic overspend contract
+        run: node scripts/validate-ai-budget-overspend.mjs --self-test
+      - name: Probe production AI budget
+        if: github.event_name != 'pull_request'
+        run: node scripts/validate-ai-budget-overspend.mjs
