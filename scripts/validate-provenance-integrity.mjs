@@ -1,4 +1,4 @@
-import { validateMetricProvenance, validateRawProvenance } from '../src/collector.js';
+import { ingestExternal, validateMetricProvenance, validateRawProvenance } from '../src/collector.js';
 
 validateRawProvenance([{ raw: { trendRadarUpstream: 'https://example.test/source' } }], 'valid-fixture');
 
@@ -62,4 +62,12 @@ try {
   disallowedOfficialPathRejected = String(error?.message || error).includes('not an allowed adapter field');
 }
 if (!disallowedOfficialPathRejected) throw new Error('official source metric contract allowed an undocumented field');
+
+let unregisteredExternalRejected = false;
+try {
+  await ingestExternal({}, 'unregistered-source', []);
+} catch (error) {
+  unregisteredExternalRejected = String(error?.message || error).includes('has no registered metric contract');
+}
+if (!unregisteredExternalRejected) throw new Error('external ingest accepted an unregistered source contract');
 console.log('Raw provenance integrity validated: upstream and non-null metric values require explicit provenance');
