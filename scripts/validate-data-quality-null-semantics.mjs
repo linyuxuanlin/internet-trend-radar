@@ -37,6 +37,16 @@ if (!/old\.raw_signals = \[\.\.\.signalBySource\.values\(\)\]/.test(staticEnrich
 if (!/existing\.raw_signals = \[\.\.\.signalBySource\.values\(\)\]/.test(staticBuilder) || !/existing\.source_count = new Set\(existing\.sources\.map\(source => source\.source_id\)\)\.size/.test(staticBuilder)) {
   throw new Error('static duplicate merge must preserve per-source evidence without summing platform metrics');
 }
+const mergeAdapters = [
+  'enrich-36kr.mjs', 'enrich-baidu.mjs', 'enrich-hupu.mjs', 'enrich-ithome.mjs',
+  'enrich-juejin.mjs', 'enrich-social-hotlists.mjs', 'enrich-solidot.mjs', 'enrich-toutiao.mjs'
+];
+for (const file of mergeAdapters) {
+  const source = await readFile(new URL(`./${file}`, import.meta.url), 'utf8');
+  if (!/old\.raw_signals = \[\.\.\.signalBySource\.values\(\)\]/.test(source) || !/old\.source_count = new Set\(old\.sources\.map\(source => source\.source_id\)\)\.size/.test(source)) {
+    throw new Error(`${file} must preserve raw evidence while merging sources`);
+  }
+}
 if (!/CASE[\s\S]*AS source_kind/.test(ai) || !/trendRadarMetrics\.heat_path/.test(ai) || !/trendRadarMetrics\.engagement_path/.test(ai)) {
   throw new Error('AI evidence must derive source kind from the observed upstream and retain metric paths');
 }
