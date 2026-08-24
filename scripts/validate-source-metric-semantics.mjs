@@ -94,6 +94,14 @@ try {
   if (!Array.isArray(douyin.heat_paths) || !douyin.heat_paths.includes('word_list[].hot_value') || !douyin.heat_paths.includes('data[].hot')) {
     throw new Error('Douyin metric metadata must enumerate exact adapter heat paths');
   }
+  for (const source of ['weibo', 'zhihu', 'bilibili', 'v2ex', 'juejin', '36kr', 'hackernews', 'github', 'xiaohongshu']) {
+    const definition = metricMetadata(source);
+    for (const metric of ['heat', 'engagement']) {
+      if (definition[metric] !== null && (!Array.isArray(definition[`${metric}_paths`]) || !definition[`${metric}_paths`].length)) {
+        throw new Error(`${source} ${metric} definition must expose an executable path allowlist`);
+      }
+    }
+  }
   console.log('Source metric semantics validated: V2EX replies and generic likes are engagement only');
 } finally {
   globalThis.fetch = originalFetch;
