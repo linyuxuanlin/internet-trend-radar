@@ -42,6 +42,18 @@ if (workerScheduled.includes('enrichTopTopics(')) {
 if (!workerScheduled.includes("controller.cron === '5 0 * * *'")) {
   throw new Error('production worker must preserve daily digest cron guard');
 }
+if (!worker.includes('export function propagateScheduledFailure(error)')) {
+  throw new Error('production worker must expose an explicit scheduled failure propagation handler');
+}
+if (!worker.includes("console.error('scheduled job failed', error);\n  throw error;")) {
+  throw new Error('scheduled failure handler must log and rethrow the original error');
+}
+if (!workerScheduled.includes('ctx.waitUntil(run.catch(propagateScheduledFailure))')) {
+  throw new Error('production scheduled handler must propagate rejected work through waitUntil');
+}
+if (/\.catch\(\s*err\s*=>\s*console\.error\(['"]scheduled job failed/.test(workerScheduled)) {
+  throw new Error('production scheduled handler must not swallow failures with a log-only catch');
+}
 
 if (!collector.includes('async function enrichAIWithoutBlockingCollection(env)')) {
   throw new Error('collector must isolate AI enrichment from real-data collection');
@@ -122,4 +134,4 @@ if (config?.vars?.AI_FALLBACK_MODEL !== '@cf/meta/llama-3.1-8b-instruct-fast') {
   throw new Error(`unexpected production fallback model: ${config?.vars?.AI_FALLBACK_MODEL}`);
 }
 
-console.log('Scheduled AI backfill, production single-pass pacing, collection-safe degradation, daily AI budget observability, and neuron-efficient primary-only production AI policy validated');
+console.log('Scheduled AI backfill, production single-pass pacing, scheduled failure propagation, collection-safe degradation, daily AI budget observability, and neuron-efficient primary-only production AI policy validated');
