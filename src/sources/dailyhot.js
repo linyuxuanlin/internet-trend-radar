@@ -34,6 +34,14 @@ function firstMetric(item, candidates) {
   return { value: null, path: null };
 }
 
+function firstMappedMetric(object, candidates) {
+  for (const [key, path] of candidates) {
+    const number = metricValue(object?.[key]);
+    if (number !== null) return { value: number, path };
+  }
+  return { value: null, path: null };
+}
+
 // The shared DailyHot endpoint is an untrusted fallback.  Keep its field
 // allowlist source-specific so a generic `score`, `view`, or ranking field is
 // not silently promoted to heat for a source whose adapter did not document it.
@@ -193,14 +201,17 @@ function mapDouyinRows(body, upstream) {
   return {
     body: { title: '抖音' },
     upstream,
-    list: rows.map((v, i) => ({
-      id: v.sentence_id || v.word_id || `douyin-${i}`,
-      title: v.word || v.sentence || v.title,
-      hot: v.hot_value ?? v.hot ?? v.score,
-      timestamp: v.event_time || v.timestamp,
-      url: v.sentence_id ? `https://www.douyin.com/hot/${v.sentence_id}` : `https://www.douyin.com/search/${encodeURIComponent(v.word || v.sentence || v.title || '')}`,
-      _trendRadarMetricPaths: { heat: 'word_list[].hot_value|hot|score (official or fallback)' }
-    }))
+    list: rows.map((v, i) => {
+      const heat = firstMappedMetric(v, [['hot_value', 'word_list[].hot_value'], ['hot', 'word_list[].hot'], ['score', 'word_list[].score']]);
+      return {
+        id: v.sentence_id || v.word_id || `douyin-${i}`,
+        title: v.word || v.sentence || v.title,
+        hot: heat.value,
+        timestamp: v.event_time || v.timestamp,
+        url: v.sentence_id ? `https://www.douyin.com/hot/${v.sentence_id}` : `https://www.douyin.com/search/${encodeURIComponent(v.word || v.sentence || v.title || '')}`,
+        _trendRadarMetricPaths: { heat: heat.path }
+      };
+    })
   };
 }
 
@@ -210,14 +221,17 @@ function mapDouyinHotListRows(body, upstream) {
   return {
     body: { title: '抖音' },
     upstream,
-    list: rows.map((v, i) => ({
-      id: v.id || v.sentence_id || v.url || `douyin-hot-list-${i}`,
-      title: v.title || v.word || v.sentence,
-      hot: v.hotness ?? v.hot_value ?? v.hot ?? v.score,
-      timestamp: v.timestamp || v.event_time,
-      url: v.url || (v.sentence_id ? `https://www.douyin.com/hot/${v.sentence_id}` : `https://www.douyin.com/search/${encodeURIComponent(v.title || v.word || v.sentence || '')}`),
-      _trendRadarMetricPaths: { heat: 'word_list[].hotness|hot_value|hot|score (official or fallback)' }
-    }))
+    list: rows.map((v, i) => {
+      const heat = firstMappedMetric(v, [['hotness', 'data.list[].hotness'], ['hot_value', 'data.list[].hot_value'], ['hot', 'data.list[].hot'], ['score', 'data.list[].score']]);
+      return {
+        id: v.id || v.sentence_id || v.url || `douyin-hot-list-${i}`,
+        title: v.title || v.word || v.sentence,
+        hot: heat.value,
+        timestamp: v.timestamp || v.event_time,
+        url: v.url || (v.sentence_id ? `https://www.douyin.com/hot/${v.sentence_id}` : `https://www.douyin.com/search/${encodeURIComponent(v.title || v.word || v.sentence || '')}`),
+        _trendRadarMetricPaths: { heat: heat.path }
+      };
+    })
   };
 }
 
@@ -235,13 +249,14 @@ function mapDouyinFlatRows(body, upstream) {
     upstream,
     list: rows.map((v, i) => {
       const title = v.title || v.word || v.sentence || v.name || '';
+      const heat = firstMappedMetric(v, [['hot', 'data[].hot'], ['hotness', 'data[].hotness'], ['hot_value', 'data[].hot_value'], ['score', 'data[].score']]);
       return {
         id: v.id || v.sentence_id || v.url || v.mobileUrl || v.mobilUrl || `douyin-flat-${i}`,
         title,
-        hot: v.hot ?? v.hotness ?? v.hot_value ?? v.score,
+        hot: heat.value,
         timestamp: v.timestamp || v.event_time,
         url: v.url || v.mobileUrl || v.mobilUrl || `https://www.douyin.com/search/${encodeURIComponent(title)}`,
-        _trendRadarMetricPaths: { heat: 'data[].hot|hotness|hot_value|score (official or fallback)' }
+        _trendRadarMetricPaths: { heat: heat.path }
       };
     }).filter(v => String(v.title || '').trim())
   };
