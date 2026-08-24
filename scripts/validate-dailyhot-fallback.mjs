@@ -60,6 +60,7 @@ async function validateDouyinFallback() {
   if (items.length !== 5) throw new Error(`expected 5 Douyin items, got ${items.length}`);
   if (items[0].title !== '真实抖音热点一') throw new Error('Douyin fallback returned wrong item');
   if (items[0].heat !== 998877) throw new Error(`Douyin fallback lost heat: ${items[0].heat}`);
+  if (items[0].raw?.trendRadarMetrics?.heat_path !== 'word_list[].hot_value') throw new Error('Douyin AA1 metric path did not identify the selected field');
   if (items[0].raw?.trendRadarUpstream !== 'https://v.api.aa1.cn/api/douyin-hot/index.php?aa1=hot') {
     throw new Error('Douyin fallback provenance missing');
   }
@@ -105,6 +106,7 @@ async function validateDouyinSecondaryFallback() {
   if (items.length !== 5) throw new Error(`expected 5 secondary Douyin items, got ${items.length}`);
   if (items[0].title !== '备用抖音热点一') throw new Error('secondary Douyin fallback returned wrong item');
   if (items[0].heat !== 7654321) throw new Error(`secondary Douyin fallback lost hotness: ${items[0].heat}`);
+  if (items[0].raw?.trendRadarMetrics?.heat_path !== 'data.list[].hotness') throw new Error('Douyin secondary metric path did not identify the selected field');
   if (items[0].url !== 'https://www.douyin.com/hot/9001') throw new Error(`secondary Douyin fallback lost canonical URL: ${items[0].url}`);
   if (items[0].raw?.trendRadarUpstream !== 'https://api.luochen.sbs/API/hot_list.php?platform=douyin') {
     throw new Error('secondary Douyin fallback provenance missing');
@@ -154,6 +156,7 @@ async function validateDouyinThirdFallback() {
   if (items.length !== 5) throw new Error(`expected 5 third-fallback Douyin items, got ${items.length}`);
   if (items[0].title !== '第三抖音热点一') throw new Error('third Douyin fallback returned wrong item');
   if (items[0].heat !== 10446000) throw new Error(`third Douyin fallback lost heat: ${items[0].heat}`);
+  if (items[0].raw?.trendRadarMetrics?.heat_path !== 'data[].hot') throw new Error('Douyin tertiary metric path did not identify the selected field');
   if (items[1].url !== 'https://www.douyin.com/search/%E7%AC%AC%E4%B8%89%E6%8A%96%E9%9F%B3%E7%83%AD%E7%82%B9%E4%BA%8C') throw new Error(`third Douyin fallback lost mobile URL: ${items[1].url}`);
   if (!items[2].url.startsWith('https://www.douyin.com/search/')) throw new Error('third Douyin fallback did not synthesize canonical search URL');
   if (items[0].raw?.trendRadarUpstream !== 'https://api.fanyia.cn/api/douyin/dyhot') {
