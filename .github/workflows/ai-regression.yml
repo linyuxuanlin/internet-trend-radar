@@ -16,6 +16,7 @@ jobs:
           node scripts/check-live-ai-output-quality.mjs --self-test
           node scripts/check-ai-quality-rollout-window.mjs --self-test
           node scripts/validate-ai-quality-rollout-endpoint.mjs
+          node scripts/check-live-ai-quality-rollout.mjs --self-test
 
           cat > /tmp/ai-debug-good.json <<'JSON'
           {
@@ -77,3 +78,14 @@ jobs:
           AI_QUALITY_ROLLOUT_AT: '2026-08-24T03:33:53.000Z'
           AI_OUTPUT_QUALITY_MIN_ATTEMPTS: '5'
         run: node scripts/check-ai-quality-rollout-window.mjs
+
+      - name: Probe exact post-rollout AI quality
+        env:
+          AI_QUALITY_ROLLOUT_URL: https://internet-trend-radar.linyuxuanlin.workers.dev/api/ai-quality-rollout
+          AI_QUALITY_ROLLOUT_AT: '2026-08-24T03:33:53.000Z'
+          AI_ROLLOUT_QUALITY_MIN_ATTEMPTS: '5'
+          AI_ROLLOUT_QUALITY_MIN_SUCCESS_RATE: '50'
+          AI_ROLLOUT_QUALITY_MAX_INVALID_JSON_RATE: '0.25'
+          AI_ROLLOUT_QUALITY_MAX_TITLE_ECHO_RATE: '0.25'
+          AI_ROLLOUT_QUALITY_MAX_COMBINED_WASTE_RATE: '0.40'
+        run: node scripts/check-live-ai-quality-rollout.mjs
