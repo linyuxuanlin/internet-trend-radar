@@ -38,6 +38,7 @@ jobs:
 
       - name: Probe live Worker AI diagnostics
         timeout-minutes: 1
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         env:
           AI_DEBUG_URL: https://internet-trend-radar.linyuxuanlin.workers.dev/api/debug
         run: |
