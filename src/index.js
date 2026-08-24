@@ -4,8 +4,6 @@ import { enrichTopTopics } from './ai.js';
 import { sendDailyDigest } from './email.js';
 import { ensureSchema } from './schema.js';
 
-const aiBackfillPromises = new WeakMap();
-
 async function ensureInitialData(env) {
   if (!env.DB) return { ok: false, reason: 'missing-db' };
   try {
@@ -19,18 +17,6 @@ async function ensureInitialData(env) {
     console.error('initial collection failed', err);
     return { ok: false, error: String(err?.message || err) };
   }
-}
-
-function queueAIBackfill(env, ctx) {
-  if (!env.DB || !env.AI || !ctx?.waitUntil) return false;
-  if (aiBackfillPromises.has(env.DB)) return false;
-  const promise = enrichTopTopics(env, { backfillOnly: true })
-    .then(result => console.log('dashboard AI backfill', result))
-    .catch(err => console.error('dashboard AI backfill failed', err))
-    .finally(() => aiBackfillPromises.delete(env.DB));
-  aiBackfillPromises.set(env.DB, promise);
-  ctx.waitUntil(promise);
-  return true;
 }
 
 function classifyAIBlocker(ai, schemaOk = true) {
@@ -337,8 +323,10 @@ export default {
           console.error('dashboard D1 schema bootstrap failed; trying real snapshot fallback', err);
         }
       }
+      // Dashboard reads must be side-effect free. AI enrichment is deliberately
+      // owned by the paced collection/scheduler path so monitoring, CI, users,
+      // or crawlers cannot spend the daily Workers AI budget just by reading.
       await ensureInitialData(env);
-      queueAIBackfill(env, ctx);
     }
 
     if (url.pathname.startsWith('/api/')) return routeApi(env, request);
