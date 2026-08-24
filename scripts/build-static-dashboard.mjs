@@ -225,10 +225,16 @@ function mergeExactDuplicates(rows) {
     existing.current_score = Math.max(existing.current_score, topic.current_score);
     existing.breakout_score = Math.max(existing.breakout_score, topic.breakout_score);
     existing.trend_score = existing.current_score;
-    existing.raw_signals = [...(existing.raw_signals || []), ...(topic.raw_signals || [])];
-    existing.source_count += 1;
-    existing.mention_count += 1;
-    existing.sources.push(...topic.sources);
+    const signalBySource = new Map([...(existing.raw_signals || []), ...(topic.raw_signals || [])]
+      .filter(signal => signal?.source_id)
+      .map(signal => [signal.source_id, signal]));
+    existing.raw_signals = [...signalBySource.values()];
+    const sourceById = new Map([...(existing.sources || []), ...(topic.sources || [])]
+      .filter(source => source?.source_id)
+      .map(source => [`${source.source_id}:${source.external_id || source.url || source.title || ''}`, source]));
+    existing.sources = [...sourceById.values()];
+    existing.source_count = new Set(existing.sources.map(source => source.source_id)).size;
+    existing.mention_count = existing.sources.length;
     existing.status = topicStatus(existing.current_score, existing.breakout_score);
   }
   return [...byId.values()].sort((a, b) => b.current_score - a.current_score || b.breakout_score - a.breakout_score);
