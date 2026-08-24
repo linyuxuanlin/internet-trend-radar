@@ -2,7 +2,6 @@ import { json, fingerprintTitle, safeJsonParse, categoryFor } from './utils.js';
 import { collectAll, ingestExternal } from './collector.js';
 import { isStoredAIValid, isStoredAIUsable } from './ai.js';
 import { currentSourcePredicate, SOURCE_FRESHNESS_HOURS } from './source-health.js';
-import { officialMetricUpstreamPredicate } from './source-metadata.js';
 
 const DEFAULT_REAL_DASHBOARD_FALLBACK = 'https://linyuxuanlin.github.io/internet-trend-radar/data/dashboard.json';
 const DEFAULT_AI_REFRESH_HOURS = 6;
@@ -454,13 +453,13 @@ async function dashboard(env, url) {
         SUM(CASE WHEN r.engagement IS NOT NULL AND (json_extract(r.raw_json,'$.trendRadarMetrics.engagement_path') IS NULL OR length(trim(json_extract(r.raw_json,'$.trendRadarMetrics.engagement_path'))) = 0) THEN 1 ELSE 0 END) AS engagement_path_violations,
         SUM(CASE WHEN json_type(s.metadata_json,'$.heat') = 'null' AND r.heat IS NOT NULL THEN 1 ELSE 0 END) AS contract_heat_violations,
         SUM(CASE WHEN json_type(s.metadata_json,'$.engagement') = 'null' AND r.engagement IS NOT NULL THEN 1 ELSE 0 END) AS contract_engagement_violations,
-        SUM(CASE WHEN r.heat IS NOT NULL AND ${officialMetricUpstreamPredicate('s.id')}
+        SUM(CASE WHEN r.heat IS NOT NULL
                   AND CASE WHEN json_type(s.metadata_json,'$.heat_paths') = 'array'
                            THEN NOT EXISTS (SELECT 1 FROM json_each(s.metadata_json,'$.heat_paths') p
                                             WHERE p.value = json_extract(r.raw_json,'$.trendRadarMetrics.heat_path'))
                            ELSE json_extract(r.raw_json,'$.trendRadarMetrics.heat_path') != json_extract(s.metadata_json,'$.heat')
                       END THEN 1 ELSE 0 END) AS definition_heat_path_violations,
-        SUM(CASE WHEN r.engagement IS NOT NULL AND ${officialMetricUpstreamPredicate('s.id')}
+        SUM(CASE WHEN r.engagement IS NOT NULL
                   AND CASE WHEN json_type(s.metadata_json,'$.engagement_paths') = 'array'
                            THEN NOT EXISTS (SELECT 1 FROM json_each(s.metadata_json,'$.engagement_paths') p
                                             WHERE p.value = json_extract(r.raw_json,'$.trendRadarMetrics.engagement_path'))
