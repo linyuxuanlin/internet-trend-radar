@@ -38,7 +38,7 @@ export async function buildDigest(env) {
   `).all();
   const date = new Date().toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' });
   const rows = results.map((t, i) => {
-    const aiValid = isStoredAIUsable(t, Number(env.AI_REFRESH_HOURS || 6));
+    const aiValid = isStoredAIUsable({ ...t, raw_evidence_text: t.evidence_detail || '' }, Number(env.AI_REFRESH_HOURS || 6));
     const opportunities = aiValid ? safeJsonParse(t.ai_opportunities_json, []) || [] : [];
     const analysis = aiValid ? esc(t.ai_summary) : '<span style="color:#9ca3af">暂无已验证 AI 分析；请查看原始来源证据</span>';
     return `<div style="padding:18px 0;border-bottom:1px solid #e5e7eb"><div style="font-size:12px;color:#6b7280">#${i+1} · ${esc(t.category)} · 趋势指数 ${Math.round(t.current_score)}（派生指标） · Breakout ${Math.round(t.breakout_score)}</div><h2 style="font-size:18px;margin:6px 0">${esc(t.canonical_title)}</h2><p style="font-size:12px;color:#6b7280;margin:6px 0">证据来源：${esc(t.evidence_sources || '未记录')}</p><p style="font-size:11px;color:#6b7280;margin:6px 0;word-break:break-word">原始证据：${esc(t.evidence_detail || '未记录')}（NULL 表示上游未提供该指标）</p><p style="margin:6px 0;color:#374151">${analysis}</p>${opportunities[0] ? `<p style="margin:8px 0"><b>机会：</b>${esc(opportunities[0].idea)}</p>` : ''}</div>`;
