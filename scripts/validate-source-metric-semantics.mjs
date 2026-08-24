@@ -90,6 +90,10 @@ try {
       throw new Error(`${source} official-page metadata must be distinct from fallback metadata`);
     }
   }
+  const douyin = metricMetadata('douyin');
+  if (!Array.isArray(douyin.heat_paths) || !douyin.heat_paths.includes('word_list[].hot_value') || !douyin.heat_paths.includes('data[].hot')) {
+    throw new Error('Douyin metric metadata must enumerate exact adapter heat paths');
+  }
   console.log('Source metric semantics validated: V2EX replies and generic likes are engagement only');
 } finally {
   globalThis.fetch = originalFetch;
