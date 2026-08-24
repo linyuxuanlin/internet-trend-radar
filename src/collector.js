@@ -97,6 +97,13 @@ export function validateMetricProvenance(items, label = 'raw_items') {
     if (engagementPath !== null && engagementPath !== undefined && typeof engagementPath !== 'string') {
       throw new Error(`${label}: engagement_path must be a string or null (item index ${index})`);
     }
+    for (const [metric, path] of [['heat', heatPath], ['engagement', engagementPath]]) {
+      if (!path) continue;
+      const allowedPaths = definition[`${metric}_paths`];
+      if (Array.isArray(allowedPaths) && allowedPaths.length && !allowedPaths.includes(path)) {
+        throw new Error(`${label}: source ${item?.sourceId || '<unknown>'} ${metric}_path is not an allowed adapter field: ${path} (item index ${index})`);
+      }
+    }
   }
   return items;
 }
