@@ -4,6 +4,7 @@ const index = await readFile(new URL('../src/index.js', import.meta.url), 'utf8'
 const scoring = await readFile(new URL('../src/scoring.js', import.meta.url), 'utf8');
 const staticBuilder = await readFile(new URL('./build-static-dashboard.mjs', import.meta.url), 'utf8');
 const staticEnricher = await readFile(new URL('./enrich-static-dashboard.mjs', import.meta.url), 'utf8');
+const collector = await readFile(new URL('../src/collector.js', import.meta.url), 'utf8');
 const ai = await readFile(new URL('../src/ai.js', import.meta.url), 'utf8');
 const api = await readFile(new URL('../src/api.js', import.meta.url), 'utf8');
 const qualityBlock = index.match(/const provenance = await env\.DB\.prepare\(`([\s\S]*?)`\)/)?.[1] || '';
@@ -70,6 +71,12 @@ if (!/definition_heat_path_violations/.test(index) || !/definition_engagement_pa
 }
 if (!/json_each\(s\.metadata_json,'\$\.heat_paths'\)/.test(index) || !/json_each\(s\.metadata_json,'\$\.heat_paths'\)/.test(api)) {
   throw new Error('runtime data quality must accept only declared alternative heat paths');
+}
+if (/r\.heat IS NOT NULL AND \$\{officialMetricUpstreamPredicate\('s\.id'\)\}/.test(index) || /r\.heat IS NOT NULL AND \$\{officialMetricUpstreamPredicate\('s\.id'\)\}/.test(api)) {
+  throw new Error('runtime metric path allowlist must also validate fallback upstreams');
+}
+if (!/NOT EXISTS \(\s*SELECT 1 FROM json_each\(\?\) allowed/.test(collector.replace(/\s+/g, ' '))) {
+  throw new Error('historical metric repair must clear paths outside the declared allowlist');
 }
 if (!/heat_peak_metric_path/.test(api) || !/engagement_peak_metric_path/.test(api) || !/metric_path: row\.heat_peak_metric_path/.test(api)) {
   throw new Error('public peak evidence must retain the metric path that produced the peak');
