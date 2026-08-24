@@ -4,6 +4,20 @@ import { metricMetadata } from '../src/source-metadata.js';
 const dashboardPath = new URL('../public/data/dashboard.json', import.meta.url);
 const dashboard = JSON.parse(await readFile(dashboardPath, 'utf8'));
 const sourceById = new Map((dashboard.sources || []).map(source => [source.id, source]));
+const sources = Array.isArray(dashboard.sources) ? dashboard.sources : [];
+const healthySources = sources.filter(source => source?.last_success_at && Number(source?.last_item_count || 0) > 0);
+
+// Enrichment scripts append sources after build-static-dashboard creates the
+// initial coverage object. Recompute coverage from the final source rows so
+// dashboard.json, health.json, and the UI cannot disagree about scope.
+dashboard.coverage = {
+  ...(dashboard.coverage || {}),
+  active_sources: sources.length,
+  active_cn_sources: sources.filter(source => String(source?.region || '').toLowerCase() === 'cn').length,
+  active_global_sources: sources.filter(source => String(source?.region || '').toLowerCase() !== 'cn').length,
+  healthy_active_sources: healthySources.length,
+  degraded_active_sources: sources.length - healthySources.length
+};
 const STATIC_SCORE_SEMANTICS = 'derived trend index; not an upstream platform heat value';
 const STATIC_SCORE_METHOD = 'rank-only (static snapshot; source percentile history unavailable; no cross-platform raw metric aggregation)';
 
