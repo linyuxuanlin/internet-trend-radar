@@ -14,6 +14,7 @@ jobs:
         run: |
           node scripts/validate-ai-quota-circuit.mjs
           node scripts/check-live-ai-output-quality.mjs --self-test
+          node scripts/check-ai-quality-rollout-window.mjs --self-test
 
           cat > /tmp/ai-debug-good.json <<'JSON'
           {
@@ -68,3 +69,10 @@ jobs:
           AI_OUTPUT_QUALITY_MAX_TITLE_ECHO_RATE: '0.25'
           AI_OUTPUT_QUALITY_MAX_COMBINED_WASTE_RATE: '0.40'
         run: node scripts/check-live-ai-output-quality.mjs
+
+      - name: Probe post-JSON-mode quality window
+        env:
+          AI_DEBUG_URL: https://internet-trend-radar.linyuxuanlin.workers.dev/api/debug
+          AI_QUALITY_ROLLOUT_AT: '2026-08-24T03:33:53.000Z'
+          AI_OUTPUT_QUALITY_MIN_ATTEMPTS: '5'
+        run: node scripts/check-ai-quality-rollout-window.mjs
