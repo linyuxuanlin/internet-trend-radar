@@ -4,6 +4,8 @@ import { collectAll } from './collector.js';
 import { sendDailyDigest } from './email.js';
 import { ensureSchema } from './schema.js';
 
+const DEFAULT_AI_QUALITY_ROLLOUT_AT = '2026-08-24T03:33:53.000Z';
+
 export function mergeAIAvailabilityIntoDebug(debug, availability) {
   const payload = debug && typeof debug === 'object' ? debug : {};
   payload.ai = payload.ai && typeof payload.ai === 'object' ? payload.ai : {};
@@ -19,11 +21,6 @@ export function mergeAIAvailabilityIntoDebug(debug, availability) {
   payload.ai.provider_quota = availability.provider_quota;
   payload.ai.pacing = availability.pacing;
   payload.ai.available = Boolean(availability.available);
-
-  // Availability is the single source of truth for whether inference can run.
-  // Base diagnostics may still report informational coverage states such as
-  // `partial-ai-coverage`; those must not survive as a blocker after provider
-  // quota recovers or pacing becomes available again.
   payload.ai.blocked_reason = availability.effective_blocker || null;
   payload.ai.ready_for_inference = Boolean(availability.available);
 
@@ -59,6 +56,40 @@ export async function rejectPreviewResponse(response) {
   }, { status: 503 });
 }
 
+export async function aiQualityRolloutStats(env) {
+  if (!env.DB) return { ok: false, error: 'missing-db-binding', preview: false };
+  const since = env.AI_QUALITY_ROLLOUT_AT || DEFAULT_AI_QUALITY_ROLLOUT_AT;
+  if (!Number.isFinite(Date.parse(since))) return { ok: false, error: 'invalid-rollout-timestamp', since, preview: false };
+  const model = env.AI_MODEL || '@cf/meta/llama-3.1-8b-instruct-fast';
+  const { results = [] } = await env.DB.prepare(`
+    SELECT CASE WHEN success=1 THEN 'success' ELSE COALESCE(failure_reason,'unknown') END AS reason,
+           COUNT(*) AS count,
+           MAX(attempted_at) AS last_at
+      FROM ai_attempts
+     WHERE attempted_at >= ? AND model = ?
+     GROUP BY reason
+     ORDER BY count DESC, reason ASC
+  `).bind(since, model).all();
+  const attempts = results.reduce((sum, row) => sum + Number(row.count || 0), 0);
+  const successes = results.filter(row => row.reason === 'success').reduce((sum, row) => sum + Number(row.count || 0), 0);
+  const failures = Math.max(0, attempts - successes);
+  return {
+    ok: true,
+    preview: false,
+    since,
+    model,
+    attempts,
+    successes,
+    failures,
+    success_rate: attempts ? Math.round((successes / attempts) * 1000) / 10 : 0,
+    failure_reasons: results.filter(row => row.reason !== 'success').map(row => ({
+      reason: row.reason || 'unknown',
+      count: Number(row.count || 0),
+      last_at: row.last_at || null
+    }))
+  };
+}
+
 export function propagateScheduledFailure(error) {
   console.error('scheduled job failed', error);
   throw error;
@@ -69,6 +100,14 @@ export default {
     const url = new URL(request.url);
     if (isForbiddenPreviewPath(url.pathname)) {
       return Response.json({ error: 'preview topics are disabled in production', ready: false, preview: false }, { status: 404 });
+    }
+    if (url.pathname === '/api/ai-quality-rollout') {
+      try {
+        await ensureSchema(env);
+        return rejectPreviewResponse(Response.json(await aiQualityRolloutStats(env)));
+      } catch (error) {
+        return Response.json({ ok: false, preview: false, error: String(error?.message || error) }, { status: 503 });
+      }
     }
     if (url.pathname !== '/api/debug') {
       const response = await baseWorker.fetch(request, env, ctx);
@@ -103,18 +142,11 @@ export default {
         return;
       }
 
-      // collectAll already performs exactly one AI enrichment pass through
-      // its collection-safe pacing wrapper. Do not delegate to the base
-      // scheduler here: that path performs a second direct AI enrichment after
-      // collectAll and can spend another AI_TOP_N burst outside the pacing cap.
       const collection = await collectAll(env);
       console.log('scheduled collection with paced AI enrichment', collection.ai);
       return { collection, ai: collection.ai };
     })();
 
-    // Do not swallow cron failures. A rejected waitUntil promise is visible to
-    // Workers observability and prevents a broken collection/inference run from
-    // looking successful merely because the error was logged.
     ctx.waitUntil(run.catch(propagateScheduledFailure));
   }
 };
