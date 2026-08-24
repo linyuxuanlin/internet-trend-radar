@@ -4,7 +4,7 @@
 
 ## MVP 已包含
 
-- 当前 Worker/D1 实时评分范围：微博、知乎、抖音、36氪、掘金、V2EX，加 Hacker News、GitHub；小红书只在外部 Bridge 推送成功后进入实时范围。Worker 的 `coverage.active_*` 与 `sources[].enabled` 是当前范围的权威依据。
+- 当前 Worker/D1 声明范围：微博、知乎、抖音、36氪、掘金、V2EX，加 Hacker News、GitHub；小红书由外部 Bridge 提供。只有来源 enabled、未过期且有当前 raw evidence 时才进入当前评分；Worker 的 `coverage.active_*`、`sources[].enabled` 和 freshness 状态是权威依据。
 - GitHub Pages 静态快照范围更大：静态适配器还会采集少数派、B站、百度、今日头条、虎扑、IT之家、Solidot 等；这批来源只代表该 Pages 快照，不等于当前 Worker/D1 已启用。静态快照的 `data_contract.source_scope` 与 `coverage.active_*` 是该快照的权威依据。
 - 全球源：Hacker News 官方 Firebase API、GitHub Search API（按近 36 小时 UTC 日期边界筛选新仓库并按 Star 排序；不是 GitHub Trending）
 - 小红书：External Collector Bridge，供需要登录态/浏览器环境的 `xiaohongshu-mcp` 独立运行后推送数据
