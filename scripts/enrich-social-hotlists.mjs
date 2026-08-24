@@ -92,6 +92,23 @@ function setSource(dashboard, source) {
   dashboard.sources = [...(dashboard.sources || []).filter(existing => existing.id !== source.id), source];
 }
 
+function assertSocialProvenance(dashboard, sourceId) {
+  const source = (dashboard.sources || []).find(item => item?.id === sourceId);
+  if (!source) throw new Error(`${sourceId}: source health entry missing after enrichment`);
+  const healthy = Boolean(source.last_success_at && !source.last_error);
+  if (!healthy) {
+    if (source.upstream_stage !== 'failed') throw new Error(`${sourceId}: degraded source must expose upstream_stage=failed`);
+    return;
+  }
+  if (!source.upstream || !/^https:\/\//.test(String(source.upstream))) throw new Error(`${sourceId}: healthy source missing HTTPS upstream`);
+  if (!source.upstream_provider || source.upstream_provider === 'unknown') throw new Error(`${sourceId}: healthy source missing upstream_provider`);
+  if (!source.upstream_stage || ['unknown', 'failed'].includes(source.upstream_stage)) throw new Error(`${sourceId}: healthy source missing upstream_stage`);
+  const refs = (dashboard.topics || []).flatMap(topic => (topic.sources || []).filter(ref => ref?.source_id === sourceId));
+  if (refs.length < 5) throw new Error(`${sourceId}: only ${refs.length} topic refs after enrichment`);
+  const mismatched = refs.filter(ref => ref.upstream !== source.upstream);
+  if (mismatched.length) throw new Error(`${sourceId}: ${mismatched.length} topic refs disagree with source upstream`);
+}
+
 async function enrichOne(dashboard, sourceId, required) {
   const nowIso = new Date().toISOString();
   try {
@@ -146,6 +163,7 @@ for (const sourceId of REQUIRED) await enrichOne(dashboard, sourceId, true);
 for (const sourceId of OPTIONAL) await enrichOne(dashboard, sourceId, false);
 
 dashboard.topics = mergeTopics(dashboard.topics, []);
+for (const sourceId of [...REQUIRED, ...OPTIONAL]) assertSocialProvenance(dashboard, sourceId);
 await writeFile(DASHBOARD, JSON.stringify(dashboard, null, 2) + '\n', 'utf8');
 
 const healthy = (dashboard.sources || []).filter(source => source?.last_success_at && !source?.last_error).length;
