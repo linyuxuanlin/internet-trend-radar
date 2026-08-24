@@ -13,6 +13,47 @@ const goodPayload = { summary: goodSummary, why_now: goodWhy, opportunities: goo
 assert(isStoredAIValid({ ai_summary: goodSummary, ai_why_now: goodWhy, ai_opportunities_json: JSON.stringify(goodOpp) }), 'valid stored AI should pass');
 assert(!isStoredAIValid({ ai_summary: '当前热度较高，值得关注后续发展。', ai_why_now: goodWhy, ai_opportunities_json: JSON.stringify(goodOpp) }), 'low-value summary must fail public quality gate');
 
+{
+  const topic = { canonical_title: '某品牌发布新手机', category: '科技', current_score: 88, breakout_score: 80, source_count: 3 };
+  const evidence = [{ source_id: 'ithome', title: '某品牌发布新手机，首发自研影像芯片', rank: 1 }];
+  const calls = [];
+  const result = await analyzeTopicDetailed({
+    AI_MODEL: '@cf/meta/llama-3.1-8b-instruct-fast',
+    AI_DISABLE_FALLBACK: '1',
+    AI: {
+      async run(model, request) {
+        calls.push({ model, request });
+        return { response: { ...goodPayload, summary: '某品牌发布新手机后，首发自研影像芯片成为多来源共同提到的核心变化，产品竞争点从参数升级转向自研能力。' } };
+      }
+    }
+  }, topic, evidence);
+  assert(result.analysis, `title mention with substantive new information must pass: ${JSON.stringify(result)}`);
+  assert(calls[0]?.request?.response_format?.type === 'json_schema', 'production 8B primary call must use JSON schema mode');
+}
+
+{
+  const topic = { canonical_title: '某品牌发布新手机', category: '科技', current_score: 88, breakout_score: 80, source_count: 3 };
+  const evidence = [{ source_id: 'ithome', title: '某品牌发布新手机', rank: 1 }];
+  const result = await analyzeTopicDetailed({
+    AI_MODEL: '@cf/meta/llama-3.1-8b-instruct-fast',
+    AI_DISABLE_FALLBACK: '1',
+    AI: { async run() { return { response: { ...goodPayload, summary: '某品牌发布新手机，正式发布。' } }; } }
+  }, topic, evidence);
+  assert(result.failureReason === 'title-echo', `near-verbatim title echo must still fail: ${JSON.stringify(result)}`);
+}
+
+{
+  const topic = { canonical_title: '结构化解析测试', category: '科技', current_score: 88, breakout_score: 80, source_count: 3 };
+  const evidence = [{ source_id: 'v2ex', title: '结构化解析测试出现新进展', rank: 1 }];
+  const fenced = `这里是结果：\n\`\`\`json\n${JSON.stringify(goodPayload)}\n\`\`\`\n以上。`;
+  const result = await analyzeTopicDetailed({
+    AI_MODEL: '@cf/test/unstructured-model',
+    AI_DISABLE_FALLBACK: '1',
+    AI: { async run() { return { response: fenced }; } }
+  }, topic, evidence);
+  assert(result.analysis?.summary === goodSummary, `balanced JSON extraction must tolerate prose/fences: ${JSON.stringify(result)}`);
+}
+
 function makeBackfillDb({ validModelOutput, fallbackValid = false, disableFallback = false }) {
   const updates = [];
   const attempts = [];
@@ -174,4 +215,4 @@ const good = dashboard.topics.find(x => x.id === 'good-ai');
 assert(bad.ai_summary === null && bad.ai_why_now === null && bad.opportunities.length === 0 && bad.ai_verified === false, 'invalid historical AI must be hidden from public API');
 assert(good.ai_summary === goodSummary && good.opportunities.length === 1, 'valid AI must remain visible');
 
-console.log('AI backlog retry fairness, structured/runtime fallback, actionable inference diagnostics, attempt diagnostics, and public quality gate validated');
+console.log('AI structured primary output, robust JSON extraction, title-echo quality, backlog retry fairness, fallback, attempt diagnostics, and public quality gate validated');
