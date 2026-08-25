@@ -89,8 +89,9 @@ npx wrangler secret put ADMIN_TOKEN
 npx wrangler secret put INGEST_TOKEN
 # 可选：提高 GitHub API 配额
 npx wrangler secret put GITHUB_TOKEN
-# 启用邮件时
-npx wrangler secret put RESEND_API_KEY
+# 启用 QQ 企业邮箱每日邮件时
+npx wrangler secret put SMTP_USER
+npx wrangler secret put SMTP_PASSWORD
 npx wrangler secret put EMAIL_FROM
 ```
 
@@ -121,6 +122,10 @@ npx wrangler deploy --temporary
 ```
 
 临时账号能力与正式 Cloudflare 账户并不完全相同；正式版建议仍部署到自己的 Cloudflare 账户，并保留 Workers AI binding。
+
+## 每日邮件
+
+每日摘要由 Worker 在北京时间 09:00 通过 QQ 企业邮箱 SMTP 发送。默认连接 `smtp.exmail.qq.com:465`（隐式 TLS）；生产环境需要配置加密 secrets：`SMTP_USER`、`SMTP_PASSWORD` 和 `EMAIL_FROM`。不要把邮箱授权码提交到代码仓库或日志中。
 
 ## API
 
