@@ -1,6 +1,7 @@
 import { safeJsonParse } from './utils.js';
 import { isStoredAIUsable } from './ai.js';
 import { currentSourcePredicate } from './source-health.js';
+import { connect } from 'cloudflare:sockets';
 
 function esc(s='') { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
@@ -50,14 +51,108 @@ export async function buildDigest(env) {
   return { date, subject: `Trend Radar · ${date} 今日趋势`, html };
 }
 
-async function sendResend(env, to, subject, html) {
-  if (!env.RESEND_API_KEY || !env.EMAIL_FROM) throw new Error('RESEND_API_KEY / EMAIL_FROM not configured');
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ from: env.EMAIL_FROM, to: [to], subject, html })
-  });
-  if (!res.ok) throw new Error(`Resend HTTP ${res.status}: ${await res.text()}`);
+function base64(value) {
+  const bytes = new TextEncoder().encode(String(value));
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+function encodeHeader(value) {
+  return `=?UTF-8?B?${base64(value)}?=`;
+}
+
+function normalizeCrlf(value) {
+  return String(value).replace(/\r?\n/g, '\r\n');
+}
+
+function dotStuff(value) {
+  return normalizeCrlf(value).replace(/^\./gm, '..');
+}
+
+function formatAddress(value) {
+  const text = String(value || '').trim();
+  const match = text.match(/^(.+?)\s*<([^<>\s]+)>$/);
+  if (!match) return `<${text}>`;
+  return `${encodeHeader(match[1].trim())} <${match[2]}>`;
+}
+
+function createLineReader(readable) {
+  const reader = readable.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  return {
+    async response() {
+      let code = null;
+      const lines = [];
+      while (true) {
+        const newline = buffer.indexOf('\r\n');
+        if (newline < 0) {
+          const chunk = await reader.read();
+          if (chunk.done) throw new Error('SMTP connection closed before response completed');
+          buffer += decoder.decode(chunk.value, { stream: true });
+          continue;
+        }
+        const line = buffer.slice(0, newline);
+        buffer = buffer.slice(newline + 2);
+        lines.push(line);
+        const match = line.match(/^(\d{3})([ -])/);
+        if (match) {
+          code = Number(match[1]);
+          if (match[2] === ' ') break;
+        }
+      }
+      if (!code || code >= 400) throw new Error(`SMTP ${code || 'invalid'}: ${lines.join(' | ')}`);
+      return { code, lines };
+    }
+  };
+}
+
+async function sendSmtp(env, to, subject, html) {
+  const username = String(env.SMTP_USER || '').trim();
+  const password = String(env.SMTP_PASSWORD || '');
+  const host = String(env.SMTP_HOST || 'smtp.exmail.qq.com').trim();
+  const port = Number(env.SMTP_PORT || 465);
+  const from = String(env.EMAIL_FROM || username).trim();
+  if (!username || !password || !from) throw new Error('SMTP_USER / SMTP_PASSWORD / EMAIL_FROM not configured');
+  if (port !== 465) throw new Error(`unsupported SMTP_PORT ${port}; QQ enterprise SMTP uses implicit TLS on 465`);
+
+  const socket = connect({ hostname: host, port }, { secureTransport: 'on' });
+  await socket.opened;
+  const reader = createLineReader(socket.readable);
+  const writer = socket.writable.getWriter();
+  const encoder = new TextEncoder();
+  const command = async (value) => {
+    await writer.write(encoder.encode(`${value}\r\n`));
+    return reader.response();
+  };
+  try {
+    await reader.response();
+    await command(`EHLO trend-radar`);
+    await command('AUTH LOGIN');
+    await command(base64(username));
+    await command(base64(password));
+    await command(`MAIL FROM:${formatAddress(username)}`);
+    await command(`RCPT TO:<${String(to).trim()}>`);
+    await command('DATA');
+    const message = [
+      `From: ${formatAddress(from)}`,
+      `To: <${String(to).trim()}>`,
+      `Subject: ${encodeHeader(subject)}`,
+      'MIME-Version: 1.0',
+      'Content-Type: text/html; charset=UTF-8',
+      'Content-Transfer-Encoding: 8bit',
+      '',
+      dotStuff(html),
+      ''
+    ].join('\r\n');
+    await writer.write(encoder.encode(`${message}.\r\n`));
+    await reader.response();
+    await command('QUIT');
+  } finally {
+    writer.releaseLock();
+    await socket.close();
+  }
 }
 
 export async function sendDailyDigest(env) {
@@ -67,7 +162,7 @@ export async function sendDailyDigest(env) {
   const { results = [] } = await env.DB.prepare(`SELECT email FROM subscribers WHERE active=1`).all();
   let sent=0, errors=0;
   for (const s of results) {
-    try { await sendResend(env, s.email, digest.subject, digest.html); sent++; }
+    try { await sendSmtp(env, s.email, digest.subject, digest.html); sent++; }
     catch (e) { console.error('email failed', s.email, e); errors++; }
   }
   await env.DB.prepare(`UPDATE digests SET sent_count=?,error_count=? WHERE digest_date=?`).bind(sent,errors,digest.date).run();
