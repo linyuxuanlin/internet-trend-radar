@@ -19,6 +19,8 @@
 
 ## 小红书为什么使用 Bridge
 
+小红书 MCP 源当前默认停用：定时任务不会启用该源，外部推送会被拒绝。仅在明确需要恢复时设置 Worker 变量 `XHS_BRIDGE_ENABLED=1`。历史数据保留。
+
 小红书 MCP 需要登录态和浏览器环境，不适合与普通 REST API 采集器共用 Cloudflare Worker 生命周期。Trend Radar 只定义稳定的 ingest 契约：
 
 ```http

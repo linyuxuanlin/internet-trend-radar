@@ -36,3 +36,17 @@ if (!/FROM topic_sources ts[\s\S]*?currentSourcePredicate\('active_source'\)/.te
   throw new Error('AI evidence query does not exclude disabled sources');
 }
 console.log('Disabled-source isolation validated: scoring and public evidence use enabled sources only');
+
+// Disabled bridges must fail before any DB write, and cron must not reactivate them.
+const { collectAll, ingestExternal } = await import('../src/collector.js');
+const { default: assert } = await import('node:assert/strict');
+await assert.rejects(ingestExternal({}, 'xiaohongshu', []), /bridge is disabled/);
+for (const enabled of [undefined, '0', '1']) {
+  let activeIds;
+  const stop = new Error('stop after source synchronization');
+  const DB = { prepare() { return { bind(...values) { activeIds = values; return this; }, async run() { throw stop; } }; } };
+  await assert.rejects(collectAll({ DB, COLLECTOR_SOURCES: 'weibo,xiaohongshu', XHS_BRIDGE_ENABLED: enabled }), error => error === stop);
+  assert.equal(activeIds.includes('xiaohongshu'), enabled === '1');
+  assert.ok(activeIds.includes('weibo') && activeIds.includes('github') && activeIds.includes('hackernews'));
+}
+console.log('XHS bridge is disabled by default for cron and external ingest');

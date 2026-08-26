@@ -298,13 +298,14 @@ export async function collectAll(env) {
   if (!env.DB) throw new Error('missing DB binding');
 
   const sourceIds = String(env.COLLECTOR_SOURCES || 'weibo,zhihu,bilibili,baidu,douyin,toutiao,36kr,juejin,hupu,v2ex')
-    .split(',').map(x => x.trim()).filter(Boolean);
+    .split(',').map(x => x.trim()).filter(x => x && x !== 'xiaohongshu');
   const summary = [];
 
   // Keep health metrics aligned with the actively configured Worker sources.
   // Sources that are only available in the static build remain in D1 for
   // provenance, but must not appear as current runtime failures.
-  const activeIds = [...new Set([...sourceIds, 'hackernews', 'github', 'xiaohongshu'])];
+  const bridgeIds = env.XHS_BRIDGE_ENABLED === '1' ? ['xiaohongshu'] : [];
+  const activeIds = [...new Set([...sourceIds, 'hackernews', 'github', ...bridgeIds])];
   const placeholders = activeIds.map(() => '?').join(',');
   await env.DB.prepare(`UPDATE sources SET enabled=CASE WHEN id IN (${placeholders}) THEN 1 ELSE 0 END, last_error_at=CASE WHEN id IN (${placeholders}) THEN last_error_at ELSE NULL END, last_error=CASE WHEN id IN (${placeholders}) THEN last_error ELSE NULL END`).bind(...activeIds, ...activeIds, ...activeIds).run();
   await env.DB.batch([
@@ -393,6 +394,9 @@ export async function ingestExternal(env, sourceId, items) {
   }
   if (sourceId !== 'xiaohongshu') {
     throw new Error(`external ingest source ${sourceId} is not an approved external bridge`);
+  }
+  if (env.XHS_BRIDGE_ENABLED !== '1') {
+    throw new Error('xiaohongshu bridge is disabled');
   }
   if (!Array.isArray(items)) throw new Error('items must be an array');
   await env.DB.prepare(`INSERT OR IGNORE INTO sources(id,name,region,kind) VALUES(?,?,?,?)`)
