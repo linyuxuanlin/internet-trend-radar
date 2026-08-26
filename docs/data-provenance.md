@@ -34,7 +34,7 @@
 
 项目有两条真实数据路径，不能把它们的来源清单合并理解：
 
-- **Worker/D1 实时路径**：由 `COLLECTOR_SOURCES` 控制，并固定运行 Hacker News、GitHub；小红书由外部 Bridge 推送。只有 D1 中 `sources[].enabled=true` 且通过当前健康门禁的来源进入 Worker 当前评分。`/api/dashboard` 的 `coverage.active_*`、`sources[].enabled` 和 `data_contract.source_scope` 是权威口径。
+- **Worker/D1 实时路径**：由 `COLLECTOR_SOURCES` 控制，并固定运行 Hacker News、GitHub；小红书外部 Bridge 已停用。只有 D1 中 `sources[].enabled=true` 且通过当前健康门禁的来源进入 Worker 当前评分。`/api/dashboard` 的 `coverage.active_*`、`sources[].enabled` 和 `data_contract.source_scope` 是权威口径。
 - **GitHub Pages 静态路径**：GitHub Actions 中的静态适配器会额外采集少数派、B站、百度、今日头条、虎扑、IT之家、Solidot 等。它是独立的真实快照，不代表这些来源已进入 Worker/D1 当前评分；静态 `dashboard.json` 自身的 `coverage.active_*` 和 `data_contract.source_scope` 是权威口径。
 
 因此，下面的表按“可能出现在真实生产快照中的来源”列出字段定义；查看当前实际使用范围时，必须以对应入口的 `coverage` 和 `sources` 为准。
@@ -52,7 +52,7 @@
 | V2EX | `www.v2ex.com/api/topics/hot.json` | 无独立热度字段（`NULL`） | `topics[].replies` | 回复数不是热度 |
 | Hacker News | `hacker-news.firebaseio.com/v0/item/{id}.json` | `item.score` | `item.descendants` | score、评论数是 HN 原生计数 |
 | GitHub 新仓库 | `api.github.com/search/repositories?q=created:>=<UTC date>&sort=stars&order=desc&per_page=30` | `repository.stargazers_count` | `repository.forks_count` | 按近 36 小时 UTC 日期边界筛选并按 Star 排序；这不是 GitHub Trending，Star、Fork 也不是跨平台热度单位 |
-| 小红书 | 外部 `xiaohongshu-mcp` Bridge | `noteCard.interactInfo.likedCount` | 点赞 + 收藏 + 评论 | 需要外部登录态；Bridge 标识会保留 |
+| 小红书 | 外部 `xiaohongshu-mcp` Bridge（已停用） | `noteCard.interactInfo.likedCount` | 点赞 + 收藏 + 评论 | 历史数据保留；当前不再接收推送 |
 | IT之家 | 官方 RSS | 无（`NULL`） | 无（`NULL`） | RSS 只提供文章发布信息，不代表平台热度 |
 | Solidot | 官方 RSS | 无（`NULL`） | 无（`NULL`） | RSS 只提供文章发布信息，不代表平台热度 |
 
