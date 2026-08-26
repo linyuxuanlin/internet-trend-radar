@@ -4,10 +4,10 @@
 
 ## MVP 已包含
 
-- 当前 Worker/D1 声明范围：微博、知乎、抖音、36氪、掘金、V2EX，加 Hacker News、GitHub；小红书由外部 Bridge 提供。只有来源 enabled、未过期且有当前 raw evidence 时才进入当前评分；Worker 的 `coverage.active_*`、`sources[].enabled` 和 freshness 状态是权威依据。
+- 当前 Worker/D1 声明范围：微博、知乎、抖音、36氪、掘金、V2EX，加 Hacker News、GitHub；小红书 MCP Bridge 已停用。只有来源 enabled、未过期且有当前 raw evidence 时才进入当前评分；Worker 的 `coverage.active_*`、`sources[].enabled` 和 freshness 状态是权威依据。
 - GitHub Pages 静态快照范围更大：静态适配器还会采集少数派、B站、百度、今日头条、虎扑、IT之家、Solidot 等；这批来源只代表该 Pages 快照，不等于当前 Worker/D1 已启用。静态快照的 `data_contract.source_scope` 与 `coverage.active_*` 是该快照的权威依据。
 - 全球源：Hacker News 官方 Firebase API、GitHub Search API（按近 36 小时 UTC 日期边界筛选新仓库并按 Star 排序；不是 GitHub Trending）
-- 小红书：External Collector Bridge，供需要登录态/浏览器环境的 `xiaohongshu-mcp` 独立运行后推送数据
+- 小红书：已停用；历史数据保留，但不再接受 Bridge 推送或进入当前评分
 - D1：raw snapshots / topics / topic snapshots / evidence / subscribers / digests
 - 原始字段：平台原生 heat/engagement、榜单 rank、采集时间和 `raw.trendRadarUpstream`；未提供的指标保存为 NULL，不填充为 0
 - Trend Score：`rank_score×0.72 + heat_percentile×24 + engagement_percentile×18`，再加入 source weight、跨来源覆盖奖励和 persistence，并限制在 0–100；所有百分位只在来源内计算，它是派生趋势指数，不是任何平台的原始热度
@@ -17,11 +17,9 @@
 - 入口语义：`https://radar.wiki-power.com` 和 `https://internet-trend-radar.linyuxuanlin.workers.dev` 都是实时 Worker/D1 入口；GitHub Pages 是静态发布入口，优先尝试实时 Worker，静态快照超过 3 小时会拒绝展示，避免把旧热度当成当前数据
 - Cron：每 30 分钟采集；每天 01:00 UTC（北京时间 09:00）发送摘要
 
-## 小红书为什么使用 Bridge
+## 小红书 Bridge（已停用）
 
-小红书 MCP 源当前默认停用：定时任务不会启用该源，外部推送会被拒绝。仅在明确需要恢复时设置 Worker 变量 `XHS_BRIDGE_ENABLED=1`。历史数据保留。
-
-小红书 MCP 需要登录态和浏览器环境，不适合与普通 REST API 采集器共用 Cloudflare Worker 生命周期。Trend Radar 只定义稳定的 ingest 契约：
+小红书 MCP Bridge 当前已停用。历史 ingest 契约仅作为历史数据说明保留，生产 Worker 不再接受新的小红书推送。
 
 ```http
 POST /api/ingest/xiaohongshu
